@@ -14,9 +14,16 @@ const JWT_SECRET = process.env.JWT_SECRET || 'tu_clave_secreta_123';
 
 // Configurar PostgreSQL (usa la variable de entorno de Render)
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
-  dialect: 'postgres', // Cambiado de 'mysql' a 'postgres'
-  logging: false
+  dialect: 'postgres',
+  logging: false,
+  dialectOptions: {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false
+    }
+  }
 });
+
 
 // Definir modelos
 const User = sequelize.define('User', {
