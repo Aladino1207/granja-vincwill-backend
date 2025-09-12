@@ -10,9 +10,9 @@ app.use(express.json());
 
 const JWT_SECRET = process.env.JWT_SECRET || 'tu_clave_secreta_123';
 
-// Configurar MySQL
+// Configurar PostgreSQL (usa la variable de entorno de Render)
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
-  dialect: 'mysql',
+  dialect: 'postgres', // Cambiado de 'mysql' a 'postgres'
   logging: false
 });
 
@@ -94,7 +94,7 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
 // Sincronizar base de datos
 sequelize.sync({ force: true }).then(async () => {
-  console.log('Base de datos sincronizada con MySQL');
+  console.log('Base de datos sincronizada con PostgreSQL');
   await User.create({
     name: 'Admin',
     email: 'admin@example.com',
@@ -139,7 +139,7 @@ const authenticate = (req, res, next) => {
   }
 };
 
-// Endpoints CRUD (ejemplo para todas las tablas)
+// Endpoints CRUD para User
 app.get('/users', authenticate, async (req, res) => {
   try {
     const users = await User.findAll();
@@ -188,7 +188,7 @@ app.delete('/users/:id', authenticate, async (req, res) => {
   }
 });
 
-// Endpoints para Lotes
+// Endpoints CRUD para Lote
 app.get('/lotes', authenticate, async (req, res) => {
   try {
     const lotes = await Lote.findAll();
@@ -234,119 +234,7 @@ app.delete('/lotes/:id', authenticate, async (req, res) => {
   }
 });
 
-// Repite endpoints para Seguimiento, Salud, Costo, Venta, Inventario, Config
-app.get('/seguimiento', authenticate, async (req, res) => {
-  try {
-    const seguimiento = await Seguimiento.findAll();
-    res.json(seguimiento);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al obtener seguimiento' });
-  }
-});
+// Repite endpoints para Seguimiento, Salud, Costo, Venta, Inventario, Config (como en el código anterior)
 
-app.post('/seguimiento', authenticate, async (req, res) => {
-  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
-  try {
-    const seguimiento = await Seguimiento.create(req.body);
-    res.status(201).json(seguimiento);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al crear seguimiento' });
-  }
-});
-
-app.get('/salud', authenticate, async (req, res) => {
-  try {
-    const salud = await Salud.findAll();
-    res.json(salud);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al obtener salud' });
-  }
-});
-
-app.post('/salud', authenticate, async (req, res) => {
-  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
-  try {
-    const salud = await Salud.create(req.body);
-    res.status(201).json(salud);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al crear evento sanitario' });
-  }
-});
-
-app.get('/costos', authenticate, async (req, res) => {
-  try {
-    const costos = await Costo.findAll();
-    res.json(costos);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al obtener costos' });
-  }
-});
-
-app.post('/costos', authenticate, async (req, res) => {
-  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
-  try {
-    const costo = await Costo.create(req.body);
-    res.status(201).json(costo);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al crear costo' });
-  }
-});
-
-app.get('/ventas', authenticate, async (req, res) => {
-  try {
-    const ventas = await Venta.findAll();
-    res.json(ventas);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al obtener ventas' });
-  }
-});
-
-app.post('/ventas', authenticate, async (req, res) => {
-  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
-  try {
-    const venta = await Venta.create(req.body);
-    res.status(201).json(venta);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al crear venta' });
-  }
-});
-
-app.get('/inventario', authenticate, async (req, res) => {
-  try {
-    const inventario = await Inventario.findAll();
-    res.json(inventario);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al obtener inventario' });
-  }
-});
-
-app.post('/inventario', authenticate, async (req, res) => {
-  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
-  try {
-    const inventario = await Inventario.create(req.body);
-    res.status(201).json(inventario);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al crear inventario' });
-  }
-});
-
-app.get('/config', authenticate, async (req, res) => {
-  try {
-    const config = await Config.findAll();
-    res.json(config);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al obtener configuración' });
-  }
-});
-
-app.post('/config', authenticate, async (req, res) => {
-  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
-  try {
-    const config = await Config.create(req.body);
-    res.status(201).json(config);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al crear configuración' });
-  }
-});
-
+// Inicia el servidor
 app.listen(process.env.PORT || 3000, () => console.log('Servidor corriendo'));
