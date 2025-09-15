@@ -243,7 +243,11 @@ app.delete('/lotes/:id', authenticate, async (req, res) => {
   }
 });
 
-// Repite endpoints para Seguimiento, Salud, Costo, Venta, Inventario, Config (como en el código anterior)
-
+// Ruta raíz para verificar que el servidor está vivo
+app.get('/', (req, res) => {
+  res.json({ 
+    message: '¡Bienvenido a la API de Granja Avícola VincWill! Usa /login para autenticarte o /lotes para ver lotes.' 
+  });
+});
 // Inicia el servidor
 app.listen(process.env.PORT || 3000, () => console.log('Servidor corriendo'));
