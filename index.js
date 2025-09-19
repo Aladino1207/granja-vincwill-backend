@@ -1,9 +1,7 @@
-require('dotenv').config(); // esto carga las variables de .env
-
 const express = require('express');
 const { Sequelize, DataTypes } = require('sequelize');
 const cors = require('cors');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 const app = express();
@@ -12,20 +10,13 @@ app.use(express.json());
 
 const JWT_SECRET = process.env.JWT_SECRET || 'tu_clave_secreta_123';
 
-// Configurar PostgreSQL (usa la variable de entorno de Render)
+// Configurar PostgreSQL
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  logging: false,
-  dialectOptions: {
-    ssl: {
-      require: true,
-      rejectUnauthorized: false
-    }
-  }
+  logging: false
 });
 
-
-// Definir modelos
+// Definir modelos (sin cambios)
 const User = sequelize.define('User', {
   name: { type: DataTypes.STRING, allowNull: false },
   email: { type: DataTypes.STRING, unique: true, allowNull: false },
@@ -91,7 +82,7 @@ const Config = sequelize.define('Config', {
   vacunasPavos: { type: DataTypes.TEXT }
 });
 
-// Definir relaciones
+// Definir relaciones (sin cambios)
 Lote.hasMany(Seguimiento, { foreignKey: 'loteId' });
 Seguimiento.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Salud, { foreignKey: 'loteId' });
@@ -101,7 +92,7 @@ Costo.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Venta, { foreignKey: 'loteId' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
-// Sincronizar base de datos
+// Sincronizar base de datos (sin cambios)
 sequelize.sync({ force: true }).then(async () => {
   console.log('Base de datos sincronizada con PostgreSQL');
   await User.create({
@@ -120,7 +111,7 @@ sequelize.sync({ force: true }).then(async () => {
   });
 }).catch(error => console.error('Error al sincronizar BD:', error));
 
-// Login endpoint
+// Login endpoint (sin cambios)
 app.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -135,7 +126,7 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// Middleware de autenticación
+// Middleware de autenticación (sin cambios)
 const authenticate = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Token requerido' });
@@ -148,7 +139,12 @@ const authenticate = (req, res, next) => {
   }
 };
 
-// Endpoints CRUD para User
+// Ruta raíz para verificar el servidor
+app.get('/', (req, res) => {
+  res.json({ message: '¡Bienvenido a la API de Granja Avícola VincWill! Usa /login para autenticarte.' });
+});
+
+// Endpoints CRUD para User (sin cambios)
 app.get('/users', authenticate, async (req, res) => {
   try {
     const users = await User.findAll();
@@ -197,7 +193,7 @@ app.delete('/users/:id', authenticate, async (req, res) => {
   }
 });
 
-// Endpoints CRUD para Lote
+// Endpoints CRUD para Lote (sin cambios)
 app.get('/lotes', authenticate, async (req, res) => {
   try {
     const lotes = await Lote.findAll();
@@ -243,11 +239,125 @@ app.delete('/lotes/:id', authenticate, async (req, res) => {
   }
 });
 
-// Ruta raíz para verificar que el servidor está vivo
-app.get('/', (req, res) => {
-  res.json({ 
-    message: '¡Bienvenido a la API de Granja Avícola VincWill! Usa /login para autenticarte o /lotes para ver lotes.' 
-  });
+// Endpoints CRUD para Seguimiento (sin cambios)
+app.get('/seguimiento', authenticate, async (req, res) => {
+  try {
+    const seguimiento = await Seguimiento.findAll();
+    res.json(seguimiento);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener seguimiento' });
+  }
 });
+
+app.post('/seguimiento', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const seguimiento = await Seguimiento.create(req.body);
+    res.status(201).json(seguimiento);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al crear seguimiento' });
+  }
+});
+
+// Endpoints CRUD para Salud (sin cambios)
+app.get('/salud', authenticate, async (req, res) => {
+  try {
+    const salud = await Salud.findAll();
+    res.json(salud);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener salud' });
+  }
+});
+
+app.post('/salud', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const salud = await Salud.create(req.body);
+    res.status(201).json(salud);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al crear evento sanitario' });
+  }
+});
+
+// Endpoints CRUD para Costos (¡AGREGADO: Corregir GET que faltaba)
+app.get('/costos', authenticate, async (req, res) => {
+  try {
+    const costos = await Costo.findAll();
+    res.json(costos);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener costos' });
+  }
+});
+
+app.post('/costos', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const costo = await Costo.create(req.body);
+    res.status(201).json(costo);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al crear costo' });
+  }
+});
+
+// Endpoints CRUD para Ventas (¡AGREGADO: Corregir GET que faltaba)
+app.get('/ventas', authenticate, async (req, res) => {
+  try {
+    const ventas = await Venta.findAll();
+    res.json(ventas);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener ventas' });
+  }
+});
+
+app.post('/ventas', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const venta = await Venta.create(req.body);
+    res.status(201).json(venta);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al crear venta' });
+  }
+});
+
+// Endpoints CRUD para Inventario (sin cambios)
+app.get('/inventario', authenticate, async (req, res) => {
+  try {
+    const inventario = await Inventario.findAll();
+    res.json(inventario);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener inventario' });
+  }
+});
+
+app.post('/inventario', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const inventario = await Inventario.create(req.body);
+    res.status(201).json(inventario);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al crear inventario' });
+  }
+});
+
+// Endpoints CRUD para Config (sin cambios)
+app.get('/config', authenticate, async (req, res) => {
+  try {
+    const config = await Config.findAll();
+    res.json(config);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener configuración' });
+  }
+});
+
+app.post('/config', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const config = await Config.create(req.body);
+    res.status(201).json(config);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al crear configuración' });
+  }
+});
+
 // Inicia el servidor
 app.listen(process.env.PORT || 3000, () => console.log('Servidor corriendo'));
