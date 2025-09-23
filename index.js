@@ -279,7 +279,7 @@ app.post('/salud', authenticate, async (req, res) => {
   }
 });
 
-// Endpoints CRUD para Costos (¡AGREGADO: Corregir GET que faltaba)
+// Endpoints CRUD para Costos (sin cambios)
 app.get('/costos', authenticate, async (req, res) => {
   try {
     const costos = await Costo.findAll();
@@ -299,7 +299,7 @@ app.post('/costos', authenticate, async (req, res) => {
   }
 });
 
-// Endpoints CRUD para Ventas (¡AGREGADO: Corregir GET que faltaba)
+// Endpoints CRUD para Ventas (sin cambios)
 app.get('/ventas', authenticate, async (req, res) => {
   try {
     const ventas = await Venta.findAll();
