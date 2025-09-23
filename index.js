@@ -59,7 +59,6 @@ const Costo = sequelize.define('Costo', {
 
 const Venta = sequelize.define('Venta', {
   loteId: { type: DataTypes.INTEGER, allowNull: false },
-  cantidadVendida: { type: DataTypes.INTEGER, allowNull: false }, // NUEVO: Unidades vendidas
   peso: { type: DataTypes.FLOAT, allowNull: false },
   precio: { type: DataTypes.FLOAT, allowNull: false },
   fecha: { type: DataTypes.DATE, allowNull: false },
@@ -300,7 +299,7 @@ app.post('/costos', authenticate, async (req, res) => {
   }
 });
 
-// Endpoints CRUD para Ventas (sin cambios)
+// Endpoints CRUD para Ventas (¡AGREGADO: POST para /ventas!)
 app.get('/ventas', authenticate, async (req, res) => {
   try {
     const ventas = await Venta.findAll();
@@ -313,14 +312,7 @@ app.get('/ventas', authenticate, async (req, res) => {
 app.post('/ventas', authenticate, async (req, res) => {
   if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
   try {
-    const { loteId, cantidadVendida, peso, precio, fecha, cliente } = req.body;
-    const lote = await Lote.findByPk(loteId);
-    if (!lote) return res.status(404).json({ error: 'Lote no encontrado' });
-    if (cantidadVendida > lote.cantidad) return res.status(400).json({ error: 'Cantidad vendida excede el stock disponible' });
-    const venta = await Venta.create({ loteId, cantidadVendida, peso, precio, fecha, cliente });
-    lote.cantidad -= cantidadVendida;
-    if (lote.cantidad === 0) lote.estado = 'Terminado';
-    await lote.save();
+    const venta = await Venta.create(req.body);
     res.status(201).json(venta);
   } catch (error) {
     res.status(500).json({ error: 'Error al crear venta' });
