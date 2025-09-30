@@ -240,16 +240,16 @@ app.put('/users/:id', authenticate, async (req, res) => {
   }
 });
 
-app.delete('/users/:id', authenticate, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+app.delete('/ventas/:id', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
   try {
     const { id } = req.params;
-    const user = await User.findByPk(id);
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    await user.destroy();
+    const venta = await Venta.findByPk(id);
+    if (!venta) return res.status(404).json({ error: 'Venta no encontrada' });
+    await venta.destroy();
     res.status(204).send();
   } catch (error) {
-    res.status(500).json({ error: 'Error al eliminar usuario' });
+    res.status(500).json({ error: 'Error al eliminar venta' });
   }
 });
 
