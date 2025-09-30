@@ -42,8 +42,8 @@ const User = sequelize.define('User', {
 });
 
 const Lote = sequelize.define('Lote', {
-  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true }, // Cambiar a INTEGER como PK
-  loteId: { type: DataTypes.STRING, unique: true, allowNull: false }, // Mantener como string único
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  loteId: { type: DataTypes.STRING, unique: true, allowNull: false },
   cantidad: { type: DataTypes.INTEGER, allowNull: false },
   pesoInicial: { type: DataTypes.FLOAT, allowNull: false },
   fechaIngreso: { type: DataTypes.DATE, allowNull: false },
@@ -80,7 +80,7 @@ const Costo = sequelize.define('Costo', {
 
 const Venta = sequelize.define('Venta', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } }, // Cambiar a INTEGER
+  loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } },
   cantidadVendida: { type: DataTypes.INTEGER, allowNull: false },
   peso: { type: DataTypes.FLOAT, allowNull: false },
   precio: { type: DataTypes.FLOAT, allowNull: false },
@@ -391,7 +391,7 @@ app.post('/ventas', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
     }
 
-    const lote = await Lote.findOne({ where: { id: loteId } }); // Usar id en lugar de loteId
+    const lote = await Lote.findByPk(loteId); // Buscar por id (INTEGER)
     if (!lote) {
       return res.status(404).json({ error: 'Lote no encontrado' });
     }
@@ -452,5 +452,5 @@ app.post('/config', authenticate, async (req, res) => {
 });
 
 // Inicia el servidor
-const PORT = process.env.PORT || 10000; // Usar 10000 como puerto por defecto
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
