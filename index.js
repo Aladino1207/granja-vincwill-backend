@@ -5,7 +5,18 @@ const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const app = express();
-app.use(cors());
+
+// Configuración avanzada de CORS
+app.use(cors({
+  origin: 'https://granja-vincwill-frontend.vercel.app', // Origen específico de tu frontend
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Métodos permitidos
+  allowedHeaders: ['Content-Type', 'Authorization'], // Headers permitidos
+  credentials: true // Permitir cookies o credenciales si las usas
+}));
+
+// Manejo explícito de peticiones preflight OPTIONS
+app.options('*', cors()); // Permite OPTIONS para todas las rutas
+
 app.use(express.json());
 
 const JWT_SECRET = process.env.JWT_SECRET || 'tu_clave_secreta_123';
