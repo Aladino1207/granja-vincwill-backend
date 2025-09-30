@@ -8,14 +8,14 @@ const app = express();
 
 // Configuración avanzada de CORS
 app.use(cors({
-  origin: 'https://granja-vincwill-frontend.vercel.app', // Origen específico de tu frontend
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Métodos permitidos
-  allowedHeaders: ['Content-Type', 'Authorization'], // Headers permitidos
-  credentials: true // Permitir cookies o credenciales si las usas
+  origin: 'https://granja-vincwill-frontend.vercel.app',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 // Manejo explícito de peticiones preflight OPTIONS
-app.options('*', cors()); // Permite OPTIONS para todas las rutas
+app.options('*', cors());
 
 app.use(express.json());
 
@@ -24,7 +24,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'tu_clave_secreta_123';
 // Configurar PostgreSQL
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  logging: false,
+  logging: console.log, // Habilitar logging para depuración
   dialectOptions: {
     ssl: {
       require: true,
@@ -75,7 +75,7 @@ const Costo = sequelize.define('Costo', {
 });
 
 const Venta = sequelize.define('Venta', {
-  loteId: { type: DataTypes.STRING, allowNull: false }, 
+  loteId: { type: DataTypes.STRING, allowNull: false },
   cantidadVendida: { type: DataTypes.INTEGER, allowNull: false },
   peso: { type: DataTypes.FLOAT, allowNull: false },
   precio: { type: DataTypes.FLOAT, allowNull: false },
@@ -110,23 +110,34 @@ Costo.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Venta, { foreignKey: 'loteId' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
-// Sincronizar base de datos
+// Sincronizar base de datos con depuración
 sequelize.sync({ force: true }).then(async () => {
   console.log('Base de datos sincronizada con PostgreSQL');
-  await User.create({
-    name: 'Admin',
-    email: 'admin@example.com',
-    password: bcryptjs.hashSync('admin123', 10),
-    role: 'admin'
-  });
-  await Config.create({
-    notificaciones: 'Activadas',
-    idioma: 'Español',
-    nombreGranja: 'Granja Avícola VincWill',
-    vacunasGallinas: '',
-    vacunasPollos: '',
-    vacunasPavos: ''
-  });
+  try {
+    const userCount = await User.count();
+    if (userCount === 0) {
+      const hashedPassword = bcryptjs.hashSync('admin123', 10);
+      const user = await User.create({
+        name: 'Admin',
+        email: 'admin@example.com',
+        password: hashedPassword,
+        role: 'admin'
+      });
+      console.log('Usuario creado:', user.toJSON());
+    } else {
+      console.log('Usuarios existentes encontrados, no se creó un nuevo admin.');
+    }
+    await Config.create({
+      notificaciones: 'Activadas',
+      idioma: 'Español',
+      nombreGranja: 'Granja Avícola VincWill',
+      vacunasGallinas: '',
+      vacunasPollos: '',
+      vacunasPavos: ''
+    });
+  } catch (error) {
+    console.error('Error al crear usuario por defecto:', error);
+  }
 }).catch(error => console.error('Error al sincronizar BD:', error));
 
 // Middleware de autenticación
@@ -151,7 +162,7 @@ app.get('/', (req, res) => {
 app.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log('Intentando login con email:', email, 'y contraseña proporcionada:', password); // Depuración
+    console.log('Intentando login con email:', email, 'y contraseña proporcionada:', password);
     const user = await User.findOne({ where: { email } });
     if (!user) {
       console.log('Usuario no encontrado para email:', email);
@@ -233,7 +244,7 @@ app.post('/lotes', authenticate, async (req, res) => {
   if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
   try {
     const { loteId, cantidad, pesoInicial, fechaIngreso, estado } = req.body;
-    console.log('Datos recibidos para crear lote:', req.body); // Depuración
+    console.log('Datos recibidos para crear lote:', req.body);
     if (!loteId || !cantidad || !pesoInicial || !fechaIngreso) {
       return res.status(400).json({ error: 'Faltan campos obligatorios (loteId, cantidad, pesoInicial, fechaIngreso)' });
     }
@@ -244,7 +255,7 @@ app.post('/lotes', authenticate, async (req, res) => {
       fechaIngreso: new Date(fechaIngreso),
       estado: estado || 'disponible'
     });
-    console.log('Lote creado:', lote.toJSON()); // Depuración
+    console.log('Lote creado:', lote.toJSON());
     res.status(201).json(lote);
   } catch (error) {
     console.error('Error al crear lote:', error);
