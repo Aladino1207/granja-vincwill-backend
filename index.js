@@ -24,7 +24,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'tu_clave_secreta_123';
 // Configurar PostgreSQL
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  logging: console.log, // Habilitar logging para depuración
+  logging: (msg) => console.log('SQL:', msg), // Logging detallado
   dialectOptions: {
     ssl: {
       require: true,
@@ -114,18 +114,18 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 sequelize.sync({ force: true }).then(async () => {
   console.log('Base de datos sincronizada con PostgreSQL');
   try {
-    const userCount = await User.count();
-    if (userCount === 0) {
+    const user = await User.findOne({ where: { email: 'admin@example.com' } });
+    if (!user) {
       const hashedPassword = bcryptjs.hashSync('admin123', 10);
-      const user = await User.create({
+      const newUser = await User.create({
         name: 'Admin',
         email: 'admin@example.com',
         password: hashedPassword,
         role: 'admin'
       });
-      console.log('Usuario creado:', user.toJSON());
+      console.log('Usuario creado:', newUser.toJSON());
     } else {
-      console.log('Usuarios existentes encontrados, no se creó un nuevo admin.');
+      console.log('Usuario admin@example.com ya existe:', user.toJSON());
     }
     await Config.create({
       notificaciones: 'Activadas',
@@ -136,7 +136,7 @@ sequelize.sync({ force: true }).then(async () => {
       vacunasPavos: ''
     });
   } catch (error) {
-    console.error('Error al crear usuario por defecto:', error);
+    console.error('Error al crear o verificar usuario por defecto:', error);
   }
 }).catch(error => console.error('Error al sincronizar BD:', error));
 
