@@ -151,13 +151,21 @@ app.get('/', (req, res) => {
 app.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log('Intentando login con email:', email, 'y contraseña proporcionada:', password); // Depuración
     const user = await User.findOne({ where: { email } });
-    if (!user || !bcryptjs.compareSync(password, user.password)) {
+    if (!user) {
+      console.log('Usuario no encontrado para email:', email);
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+    if (!bcryptjs.compareSync(password, user.password)) {
+      console.log('Contraseña incorrecta para usuario:', email);
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
     const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '1h' });
+    console.log('Login exitoso para usuario:', email);
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (error) {
+    console.error('Error en login:', error);
     res.status(500).json({ error: 'Error en login' });
   }
 });
