@@ -42,7 +42,8 @@ const User = sequelize.define('User', {
 });
 
 const Lote = sequelize.define('Lote', {
-  loteId: { type: DataTypes.STRING, unique: true, allowNull: false },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true }, // Cambiar a INTEGER como PK
+  loteId: { type: DataTypes.STRING, unique: true, allowNull: false }, // Mantener como string único
   cantidad: { type: DataTypes.INTEGER, allowNull: false },
   pesoInicial: { type: DataTypes.FLOAT, allowNull: false },
   fechaIngreso: { type: DataTypes.DATE, allowNull: false },
@@ -50,7 +51,8 @@ const Lote = sequelize.define('Lote', {
 });
 
 const Seguimiento = sequelize.define('Seguimiento', {
-  loteId: { type: DataTypes.INTEGER, allowNull: false },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } },
   semana: { type: DataTypes.INTEGER, allowNull: false },
   peso: { type: DataTypes.FLOAT, allowNull: false },
   consumo: { type: DataTypes.FLOAT, allowNull: false },
@@ -59,7 +61,8 @@ const Seguimiento = sequelize.define('Seguimiento', {
 });
 
 const Salud = sequelize.define('Salud', {
-  loteId: { type: DataTypes.INTEGER, allowNull: false },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } },
   tipo: { type: DataTypes.STRING, allowNull: false },
   nombre: { type: DataTypes.STRING, allowNull: false },
   cantidad: { type: DataTypes.INTEGER, allowNull: false },
@@ -67,7 +70,8 @@ const Salud = sequelize.define('Salud', {
 });
 
 const Costo = sequelize.define('Costo', {
-  loteId: { type: DataTypes.INTEGER, allowNull: false },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } },
   categoria: { type: DataTypes.STRING, allowNull: false },
   descripcion: { type: DataTypes.TEXT, allowNull: false },
   monto: { type: DataTypes.FLOAT, allowNull: false },
@@ -75,7 +79,8 @@ const Costo = sequelize.define('Costo', {
 });
 
 const Venta = sequelize.define('Venta', {
-  loteId: { type: DataTypes.STRING, allowNull: false },
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } }, // Cambiar a INTEGER
   cantidadVendida: { type: DataTypes.INTEGER, allowNull: false },
   peso: { type: DataTypes.FLOAT, allowNull: false },
   precio: { type: DataTypes.FLOAT, allowNull: false },
@@ -84,6 +89,7 @@ const Venta = sequelize.define('Venta', {
 });
 
 const Inventario = sequelize.define('Inventario', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   producto: { type: DataTypes.STRING, allowNull: false },
   categoria: { type: DataTypes.STRING, allowNull: false },
   cantidad: { type: DataTypes.FLOAT, allowNull: false },
@@ -92,6 +98,7 @@ const Inventario = sequelize.define('Inventario', {
 });
 
 const Config = sequelize.define('Config', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   notificaciones: { type: DataTypes.STRING, allowNull: false },
   idioma: { type: DataTypes.STRING, allowNull: false },
   nombreGranja: { type: DataTypes.STRING, allowNull: false },
@@ -100,7 +107,7 @@ const Config = sequelize.define('Config', {
   vacunasPavos: { type: DataTypes.TEXT }
 });
 
-// Definir relaciones
+// Definir relaciones explícitas
 Lote.hasMany(Seguimiento, { foreignKey: 'loteId' });
 Seguimiento.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Salud, { foreignKey: 'loteId' });
@@ -181,6 +188,22 @@ app.post('/login', async (req, res) => {
   }
 });
 
+// Endpoint temporal para crear usuario admin
+app.post('/create-admin', async (req, res) => {
+  try {
+    const hashedPassword = bcryptjs.hashSync('admin123', 10);
+    const user = await User.create({
+      name: 'Admin',
+      email: 'admin@example.com',
+      password: hashedPassword,
+      role: 'admin'
+    });
+    res.status(201).json({ message: 'Usuario admin creado', user });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al crear usuario: ' + error.message });
+  }
+});
+
 // Endpoints CRUD para User
 app.get('/users', authenticate, async (req, res) => {
   try {
@@ -249,6 +272,7 @@ app.post('/lotes', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Faltan campos obligatorios (loteId, cantidad, pesoInicial, fechaIngreso)' });
     }
     const lote = await Lote.create({
+      id: null, // Permitir que autoIncrement genere el ID
       loteId,
       cantidad: parseInt(cantidad),
       pesoInicial: parseFloat(pesoInicial),
@@ -367,7 +391,7 @@ app.post('/ventas', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
     }
 
-    const lote = await Lote.findOne({ where: { loteId } });
+    const lote = await Lote.findOne({ where: { id: loteId } }); // Usar id en lugar de loteId
     if (!lote) {
       return res.status(404).json({ error: 'Lote no encontrado' });
     }
@@ -417,21 +441,16 @@ app.get('/config', authenticate, async (req, res) => {
   }
 });
 
-app.post('/create-admin', async (req, res) => {
+app.post('/config', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
   try {
-    const hashedPassword = bcryptjs.hashSync('admin123', 10);
-    const user = await User.create({
-      name: 'Admin',
-      email: 'admin@example.com',
-      password: hashedPassword,
-      role: 'admin'
-    });
-    res.status(201).json({ message: 'Usuario admin creado', user });
+    const config = await Config.create(req.body);
+    res.status(201).json(config);
   } catch (error) {
-    res.status(500).json({ error: 'Error al crear usuario: ' + error.message });
+    res.status(500).json({ error: 'Error al crear configuración' });
   }
 });
 
 // Inicia el servidor
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000; // Usar 10000 como puerto por defecto
 app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
