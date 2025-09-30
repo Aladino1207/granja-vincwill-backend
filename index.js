@@ -75,7 +75,7 @@ const Costo = sequelize.define('Costo', {
 });
 
 const Venta = sequelize.define('Venta', {
-  loteId: { type: DataTypes.INTEGER, allowNull: false },
+  loteId: { type: DataTypes.STRING, allowNull: false }, 
   cantidadVendida: { type: DataTypes.INTEGER, allowNull: false },
   peso: { type: DataTypes.FLOAT, allowNull: false },
   precio: { type: DataTypes.FLOAT, allowNull: false },
