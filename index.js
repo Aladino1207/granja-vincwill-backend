@@ -417,13 +417,18 @@ app.get('/config', authenticate, async (req, res) => {
   }
 });
 
-app.post('/config', authenticate, async (req, res) => {
-  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+app.post('/create-admin', async (req, res) => {
   try {
-    const config = await Config.create(req.body);
-    res.status(201).json(config);
+    const hashedPassword = bcryptjs.hashSync('admin123', 10);
+    const user = await User.create({
+      name: 'Admin',
+      email: 'admin@example.com',
+      password: hashedPassword,
+      role: 'admin'
+    });
+    res.status(201).json({ message: 'Usuario admin creado', user });
   } catch (error) {
-    res.status(500).json({ error: 'Error al crear configuración' });
+    res.status(500).json({ error: 'Error al crear usuario: ' + error.message });
   }
 });
 
