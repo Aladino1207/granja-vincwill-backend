@@ -13,7 +13,13 @@ const JWT_SECRET = process.env.JWT_SECRET || 'tu_clave_secreta_123';
 // Configurar PostgreSQL
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  logging: false
+  logging: false,
+  dialectOptions: {
+    ssl: {
+      require: true, // Obliga a usar SSL
+      rejectUnauthorized: false // Evita errores de certificados no válidos (para desarrollo)
+    }
+  }
 });
 
 // Definir modelos (sin cambios)
