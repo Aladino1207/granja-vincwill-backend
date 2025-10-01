@@ -387,15 +387,18 @@ app.post('/ventas', authenticate, async (req, res) => {
   if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
   try {
     const { loteId, cantidadVendida, peso, precio, fecha, cliente } = req.body;
+    console.log('Datos recibidos para crear venta:', req.body); // Depuración
     if (!loteId || !cantidadVendida || !peso || !precio || !fecha) {
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
     }
 
     const lote = await Lote.findByPk(loteId); // Buscar por id (INTEGER)
     if (!lote) {
+      console.log('Lote no encontrado con ID:', loteId); // Depuración
       return res.status(404).json({ error: 'Lote no encontrado' });
     }
     if (lote.estado !== 'disponible' || lote.cantidad < cantidadVendida) {
+      console.log('Lote no disponible o cantidad insuficiente:', lote); // Depuración
       return res.status(400).json({ error: 'Lote no disponible o cantidad insuficiente' });
     }
 
@@ -404,9 +407,11 @@ app.post('/ventas', authenticate, async (req, res) => {
       cantidad: lote.cantidad - cantidadVendida,
       estado: lote.cantidad - cantidadVendida > 0 ? 'disponible' : 'vendido'
     });
+    console.log('Venta creada y lote actualizado:', venta.toJSON(), 'Lote actualizado:', lote.toJSON()); // Depuración
 
     res.status(201).json(venta);
   } catch (error) {
+    console.error('Error al crear venta:', error); // Depuración
     res.status(500).json({ error: 'Error al crear venta: ' + error.message });
   }
 });
