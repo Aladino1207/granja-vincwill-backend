@@ -118,7 +118,7 @@ Lote.hasMany(Venta, { foreignKey: 'loteId' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
 // Sincronizar base de datos con depuración
-sequelize.sync({ force: true }).then(async () => {
+sequelize.sync({ force: false }).then(async () => {
   console.log('Base de datos sincronizada con PostgreSQL');
   try {
     const user = await User.findOne({ where: { email: 'admin@example.com' } });
