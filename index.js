@@ -384,34 +384,52 @@ app.get('/ventas', authenticate, async (req, res) => {
 });
 
 app.post('/ventas', authenticate, async (req, res) => {
-  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  if (req.user.role === 'viewer') {
+    console.log('Acceso denegado para rol viewer');
+    return res.status(403).json({ error: 'Acceso denegado' });
+  }
   try {
     const { loteId, cantidadVendida, peso, precio, fecha, cliente } = req.body;
-    console.log('Solicitud POST /ventas recibida:', req.body); // Depuración
+    console.log('Solicitud POST /ventas recibida:', { loteId, cantidadVendida, peso, precio, fecha, cliente }); // Depuración
+
     if (!loteId || !cantidadVendida || !peso || !precio || !fecha) {
+      console.log('Faltan campos obligatorios');
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
     }
 
     const lote = await Lote.findByPk(loteId);
     if (!lote) {
-      console.log('Lote no encontrado con ID:', loteId); // Depuración
+      console.log('Lote no encontrado con ID:', loteId);
       return res.status(404).json({ error: 'Lote no encontrado' });
     }
     if (lote.estado !== 'disponible' || lote.cantidad < cantidadVendida) {
-      console.log('Lote no disponible o cantidad insuficiente:', lote.toJSON()); // Depuración
+      console.log('Lote no disponible o cantidad insuficiente:', lote.toJSON());
       return res.status(400).json({ error: 'Lote no disponible o cantidad insuficiente' });
     }
 
-    const venta = await Venta.create({ loteId, cantidadVendida, peso, precio, fecha, cliente });
-    await lote.update({
-      cantidad: lote.cantidad - cantidadVendida,
-      estado: lote.cantidad - cantidadVendida > 0 ? 'disponible' : 'vendido'
+    // Iniciar transacción para asegurar consistencia
+    const result = await sequelize.transaction(async (t) => {
+      const venta = await Venta.create(
+        { loteId, cantidadVendida, peso, precio, fecha, cliente },
+        { transaction: t }
+      );
+      await lote.update(
+        {
+          cantidad: lote.cantidad - cantidadVendida,
+          estado: lote.cantidad - cantidadVendida > 0 ? 'disponible' : 'vendido'
+        },
+        { transaction: t }
+      );
+      return venta;
     });
-    console.log('Venta creada:', venta.toJSON(), 'Lote actualizado:', lote.toJSON()); // Depuración
 
-    res.status(201).json(venta);
+    console.log('Venta creada y lote actualizado:', result.toJSON(), 'Lote actualizado:', lote.toJSON()); // Aquí va tu código
+    res.status(201).json(result);
   } catch (error) {
-    console.error('Error al crear venta:', error); // Depuración
+    console.error('Error al crear venta:', error); // Captura todos los errores
+    if (error.name === 'SequelizeDatabaseError') {
+      console.error('Error de base de datos:', error.original);
+    }
     res.status(500).json({ error: 'Error al crear venta: ' + error.message });
   }
 });
