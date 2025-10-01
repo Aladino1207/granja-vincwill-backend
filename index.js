@@ -8,13 +8,12 @@ const app = express();
 
 // Configuración avanzada de CORS
 app.use(cors({
-  origin: 'https://granja-vincwill-frontend.vercel.app',
+  origin: 'https://granja-vincwill-frontend.vercel.app', // Ajusta al dominio de tu frontend
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
 
-// Manejo explícito de peticiones preflight OPTIONS
 app.options('*', cors());
 
 app.use(express.json());
