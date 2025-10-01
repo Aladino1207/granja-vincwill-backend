@@ -24,7 +24,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'tu_clave_secreta_123';
 // Configurar PostgreSQL
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  logging: (msg) => console.log('SQL:', msg), // Logging detallado
+  logging: (msg) => console.log('SQL:', msg),
   dialectOptions: {
     ssl: {
       require: true,
@@ -118,7 +118,7 @@ Lote.hasMany(Venta, { foreignKey: 'loteId' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
 // Sincronizar base de datos con depuración
-sequelize.sync({ force: false }).then(async () => {
+sequelize.sync({ alter: false }).then(async () => {
   console.log('Base de datos sincronizada con PostgreSQL');
   try {
     const user = await User.findOne({ where: { email: 'admin@example.com' } });
@@ -387,18 +387,18 @@ app.post('/ventas', authenticate, async (req, res) => {
   if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
   try {
     const { loteId, cantidadVendida, peso, precio, fecha, cliente } = req.body;
-    console.log('Datos recibidos para crear venta:', req.body); // Depuración
+    console.log('Solicitud POST /ventas recibida:', req.body); // Depuración
     if (!loteId || !cantidadVendida || !peso || !precio || !fecha) {
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
     }
 
-    const lote = await Lote.findByPk(loteId); // Buscar por id (INTEGER)
+    const lote = await Lote.findByPk(loteId);
     if (!lote) {
       console.log('Lote no encontrado con ID:', loteId); // Depuración
       return res.status(404).json({ error: 'Lote no encontrado' });
     }
     if (lote.estado !== 'disponible' || lote.cantidad < cantidadVendida) {
-      console.log('Lote no disponible o cantidad insuficiente:', lote); // Depuración
+      console.log('Lote no disponible o cantidad insuficiente:', lote.toJSON()); // Depuración
       return res.status(400).json({ error: 'Lote no disponible o cantidad insuficiente' });
     }
 
@@ -407,7 +407,7 @@ app.post('/ventas', authenticate, async (req, res) => {
       cantidad: lote.cantidad - cantidadVendida,
       estado: lote.cantidad - cantidadVendida > 0 ? 'disponible' : 'vendido'
     });
-    console.log('Venta creada y lote actualizado:', venta.toJSON(), 'Lote actualizado:', lote.toJSON()); // Depuración
+    console.log('Venta creada:', venta.toJSON(), 'Lote actualizado:', lote.toJSON()); // Depuración
 
     res.status(201).json(venta);
   } catch (error) {
