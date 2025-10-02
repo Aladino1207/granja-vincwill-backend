@@ -376,10 +376,17 @@ app.get('/costos', authenticate, async (req, res) => {
 app.post('/costos', authenticate, async (req, res) => {
   if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
   try {
-    const costo = await Costo.create(req.body);
+    const { loteId, categoria, descripcion, monto, fecha } = req.body;
+    console.log('Solicitud POST /costos recibida:', req.body);
+    if (!loteId || !categoria || !descripcion || !monto || !fecha) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+    const costo = await Costo.create({ loteId, categoria, descripcion, monto, fecha });
+    console.log('Costo creado:', costo.toJSON());
     res.status(201).json(costo);
   } catch (error) {
-    res.status(500).json({ error: 'Error al crear costo' });
+    console.error('Error al crear costo:', error);
+    res.status(500).json({ error: 'Error al crear costo: ' + error.message });
   }
 });
 
