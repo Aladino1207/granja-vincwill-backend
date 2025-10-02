@@ -10,7 +10,7 @@ const app = express();
 
 // Configuración avanzada de CORS
 app.use(cors({
-  origin: 'https://granja-vincwill-frontend.vercel.app', // Ajusta al dominio de tu frontend
+  origin: 'https://granja-vincwill-frontend.vercel.app', 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
@@ -120,8 +120,18 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
 // Sincronizar base de datos con depuración
 sequelize.sync({ alter: true }).then(async () => {
-  console.log('Base de datos sincronizada con PostgreSQL');
   try {
+    await sequelize.authenticate();
+    console.log('Conexión a la base de datos establecida');
+    await sequelize.sync({ alter: true }); // Asegura que las tablas se ajusten
+    console.log('Base de datos sincronizada con PostgreSQL');
+    // Verifica si la tabla Costos existe
+    const tableExists = await sequelize.getQueryInterface().showAllTables().then(tables => tables.includes('Costos'));
+    if (!tableExists) {
+      console.log('Tabla Costos no encontrada, forzando recreación');
+      await Costo.sync({ force: true }); // Usa force: true solo en desarrollo o si estás seguro
+    }
+    // Lógica de creación de usuario admin...
     const user = await User.findOne({ where: { email: 'admin@example.com' } });
     if (!user) {
       const hashedPassword = bcryptjs.hashSync('admin123', 10);
@@ -144,9 +154,9 @@ sequelize.sync({ alter: true }).then(async () => {
       vacunasPavos: ''
     });
   } catch (error) {
-    console.error('Error al crear o verificar usuario por defecto:', error);
+    console.error('Error al conectar o sincronizar la base de datos:', error);
   }
-}).catch(error => console.error('Error al sincronizar BD:', error));
+})();
 
 // Middleware de autenticación
 const authenticate = (req, res, next) => {
@@ -381,12 +391,29 @@ app.post('/costos', authenticate, async (req, res) => {
     if (!loteId || !categoria || !descripcion || !monto || !fecha) {
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
     }
-    const costo = await Costo.create({ loteId, categoria, descripcion, monto, fecha });
-    console.log('Costo creado:', costo.toJSON());
+    // Valida que el loteId exista
+    const lote = await Lote.findByPk(loteId);
+    if (!lote) {
+      return res.status(400).json({ error: 'Lote no encontrado' });
+    }
+    const costo = await Costo.create({
+      loteId: parseInt(loteId),
+      categoria,
+      descripcion,
+      monto: parseFloat(monto),
+      fecha: new Date(fecha)
+    });
+    console.log('Costo creado en la base de datos:', costo.toJSON());
     res.status(201).json(costo);
   } catch (error) {
-    console.error('Error al crear costo:', error);
-    res.status(500).json({ error: 'Error al crear costo: ' + error.message });
+    console.error('Error al crear costo - Detalle:', error);
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      res.status(400).json({ error: 'Registro duplicado' });
+    } else if (error.name === 'SequelizeForeignKeyConstraintError') {
+      res.status(400).json({ error: 'Lote no válido' });
+    } else {
+      res.status(500).json({ error: 'Error al crear costo: ' + error.message });
+    }
   }
 });
 
