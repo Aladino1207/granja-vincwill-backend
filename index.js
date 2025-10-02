@@ -338,8 +338,10 @@ app.post('/seguimiento', authenticate, async (req, res) => {
 app.get('/salud', authenticate, async (req, res) => {
   try {
     const salud = await Salud.findAll();
+    console.log('Datos de /salud enviados:', salud);
     res.json(salud);
   } catch (error) {
+    console.error('Error al obtener salud:', error);
     res.status(500).json({ error: 'Error al obtener salud' });
   }
 });
@@ -347,10 +349,17 @@ app.get('/salud', authenticate, async (req, res) => {
 app.post('/salud', authenticate, async (req, res) => {
   if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
   try {
-    const salud = await Salud.create(req.body);
+    const { loteId, tipo, nombre, cantidad, fecha } = req.body;
+    console.log('Solicitud POST /salud recibida:', req.body);
+    if (!loteId || !tipo || !nombre || !cantidad || !fecha) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+    const salud = await Salud.create({ loteId, tipo, nombre, cantidad, fecha });
+    console.log('Evento de salud creado:', salud.toJSON());
     res.status(201).json(salud);
   } catch (error) {
-    res.status(500).json({ error: 'Error al crear evento sanitario' });
+    console.error('Error al crear evento de salud:', error);
+    res.status(500).json({ error: 'Error al crear evento de salud: ' + error.message });
   }
 });
 
