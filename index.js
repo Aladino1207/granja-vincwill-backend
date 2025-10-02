@@ -1,3 +1,5 @@
+const API_URL = 'https://granja-vincwill-backend.onrender.com';
+
 const express = require('express');
 const { Sequelize, DataTypes } = require('sequelize');
 const cors = require('cors');
@@ -117,7 +119,7 @@ Lote.hasMany(Venta, { foreignKey: 'loteId' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
 // Sincronizar base de datos con depuración
-sequelize.sync({ alter: false }).then(async () => {
+sequelize.sync({ alter: true }).then(async () => {
   console.log('Base de datos sincronizada con PostgreSQL');
   try {
     const user = await User.findOne({ where: { email: 'admin@example.com' } });
@@ -383,13 +385,14 @@ app.get('/ventas', authenticate, async (req, res) => {
 });
 
 app.post('/ventas', authenticate, async (req, res) => {
+  console.log('Solicitud POST /ventas recibida en el servidor:', req.body); // Log inicial
   if (req.user.role === 'viewer') {
     console.log('Acceso denegado para rol viewer');
     return res.status(403).json({ error: 'Acceso denegado' });
   }
   try {
     const { loteId, cantidadVendida, peso, precio, fecha, cliente } = req.body;
-    console.log('Solicitud POST /ventas recibida:', { loteId, cantidadVendida, peso, precio, fecha, cliente }); // Depuración
+    console.log('Procesando datos:', { loteId, cantidadVendida, peso, precio, fecha, cliente });
 
     if (!loteId || !cantidadVendida || !peso || !precio || !fecha) {
       console.log('Faltan campos obligatorios');
@@ -406,7 +409,6 @@ app.post('/ventas', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Lote no disponible o cantidad insuficiente' });
     }
 
-    // Iniciar transacción para asegurar consistencia
     const result = await sequelize.transaction(async (t) => {
       const venta = await Venta.create(
         { loteId, cantidadVendida, peso, precio, fecha, cliente },
@@ -422,10 +424,10 @@ app.post('/ventas', authenticate, async (req, res) => {
       return venta;
     });
 
-    console.log('Venta creada y lote actualizado:', result.toJSON(), 'Lote actualizado:', lote.toJSON()); // Aquí va tu código
+    console.log('Venta creada y lote actualizado:', result.toJSON(), 'Lote actualizado:', lote.toJSON());
     res.status(201).json(result);
   } catch (error) {
-    console.error('Error al crear venta:', error); // Captura todos los errores
+    console.error('Error al crear venta:', error);
     if (error.name === 'SequelizeDatabaseError') {
       console.error('Error de base de datos:', error.original);
     }
