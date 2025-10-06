@@ -122,7 +122,7 @@ Lote.hasMany(Venta, { foreignKey: 'loteId' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
 // Sincronizar base de datos con depuración
-sequelize.sync({ force: true }).then(async () => {
+sequelize.sync({ alter: true }).then(async () => {
   try {
     await sequelize.authenticate();
     console.log('Conexión a la base de datos establecida');
