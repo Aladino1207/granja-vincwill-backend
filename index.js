@@ -77,6 +77,9 @@ const Costo = sequelize.define('Costo', {
   descripcion: { type: DataTypes.TEXT, allowNull: false },
   monto: { type: DataTypes.FLOAT, allowNull: false },
   fecha: { type: DataTypes.DATE, allowNull: false }
+}, {
+  tableName: 'Costos', // Especifica el nombre exacto de la tabla
+  timestamps: true // Opcional: añade createdAt y updatedAt
 });
 
 const Venta = sequelize.define('Venta', {
@@ -119,19 +122,18 @@ Lote.hasMany(Venta, { foreignKey: 'loteId' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
 // Sincronizar base de datos con depuración
-sequelize.sync({ alter: true }).then(async () => {
+sequelize.sync({ force: true }).then(async () => {
   try {
     await sequelize.authenticate();
     console.log('Conexión a la base de datos establecida');
-    await sequelize.sync({ alter: true }); // Asegura que las tablas se ajusten
+    await sequelize.sync({ alter: true }); // Ajusta las tablas existentes
     console.log('Base de datos sincronizada con PostgreSQL');
     // Verifica si la tabla Costos existe
     const tableExists = await sequelize.getQueryInterface().showAllTables().then(tables => tables.includes('Costos'));
     if (!tableExists) {
       console.log('Tabla Costos no encontrada, forzando recreación');
-      await Costo.sync({ force: true }); // Usa force: true solo en desarrollo o si estás seguro
+      await Costo.sync({ force: true }); // Usa force: true solo en desarrollo
     }
-    // Lógica de creación de usuario admin...
     const user = await User.findOne({ where: { email: 'admin@example.com' } });
     if (!user) {
       const hashedPassword = bcryptjs.hashSync('admin123', 10);
