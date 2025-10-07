@@ -389,7 +389,7 @@ app.post('/costos', authenticate, async (req, res) => {
   if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
   try {
     const { loteId, categoria, descripcion, monto, fecha } = req.body;
-    console.log('Solicitud POST /costos recibida:', req.body); // Log de entrada
+    console.log('Solicitud POST /costos recibida:', req.body);
     if (!loteId || !categoria || !descripcion || !monto || !fecha) {
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
     }
@@ -405,7 +405,7 @@ app.post('/costos', authenticate, async (req, res) => {
       monto: parseFloat(monto),
       fecha: new Date(fecha)
     });
-    console.log('Costo creado en la base de datos:', costo.toJSON()); // Log de éxito
+    console.log('Costo creado en la base de datos:', costo.toJSON());
     res.status(201).json(costo);
   } catch (error) {
     console.error('Error al crear costo - Detalle:', error);
