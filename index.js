@@ -176,6 +176,12 @@ const authenticate = (req, res, next) => {
   }
 };
 
+//borrrar despues
+app.use((req, res, next) => {
+  console.log(`Solicitud recibida: ${req.method} ${req.url}`);
+  next();
+});
+
 // Ruta raíz
 app.get('/', (req, res) => {
   res.json({ message: '¡Bienvenido a la API de Granja Avícola VincWill! Usa /login para autenticarte.' });
