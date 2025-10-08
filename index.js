@@ -493,10 +493,23 @@ app.get('/inventario', authenticate, async (req, res) => {
 app.post('/inventario', authenticate, async (req, res) => {
   if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
   try {
-    const inventario = await Inventario.create(req.body);
+    const { producto, categoria, cantidad, costo, fecha } = req.body;
+    console.log('Solicitud POST /inventario recibida:', req.body);
+    if (!producto || !categoria || !cantidad || !costo || !fecha) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios (producto, categoria, cantidad, costo, fecha)' });
+    }
+    const inventario = await Inventario.create({
+      producto,
+      categoria,
+      cantidad: parseFloat(cantidad),
+      costo: parseFloat(costo),
+      fecha: new Date(fecha)
+    });
+    console.log('Inventario creado en la base de datos:', inventario.toJSON());
     res.status(201).json(inventario);
   } catch (error) {
-    res.status(500).json({ error: 'Error al crear inventario' });
+    console.error('Error al crear inventario - Detalle:', error);
+    res.status(500).json({ error: 'Error al crear inventario: ' + error.message });
   }
 });
 
