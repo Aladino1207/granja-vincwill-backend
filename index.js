@@ -854,10 +854,40 @@ app.get('/config', authenticate, async (req, res) => {
 app.post('/config', authenticate, async (req, res) => {
   if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
   try {
-    const config = await Config.create(req.body);
-    res.status(201).json(config);
+    const existingConfig = await Config.findOne();
+    if (existingConfig) {
+      await existingConfig.update(req.body);
+      res.json(existingConfig);
+    } else {
+      const config = await Config.create(req.body);
+      res.status(201).json(config);
+    }
   } catch (error) {
-    res.status(500).json({ error: 'Error al crear configuración' });
+    res.status(500).json({ error: 'Error al crear/actualizar configuración' });
+  }
+});
+
+app.get('/config/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const config = await Config.findByPk(id);
+    if (!config) return res.status(404).json({ error: 'Configuración no encontrada' });
+    res.json(config);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener configuración' });
+  }
+});
+
+app.delete('/config/:id', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { id } = req.params;
+    const config = await Config.findByPk(id);
+    if (!config) return res.status(404).json({ error: 'Configuración no encontrada' });
+    await config.destroy();
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: 'Error al eliminar configuración' });
   }
 });
 
