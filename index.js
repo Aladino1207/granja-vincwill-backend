@@ -348,10 +348,66 @@ app.get('/seguimiento', authenticate, async (req, res) => {
 app.post('/seguimiento', authenticate, async (req, res) => {
   if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
   try {
-    const seguimiento = await Seguimiento.create(req.body);
+    const { loteId, semana, peso, consumo, observaciones, fecha } = req.body;
+    if (!loteId || !semana || !peso || !consumo || !fecha) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+    const seguimiento = await Seguimiento.create({
+      loteId: parseInt(loteId),
+      semana: parseInt(semana),
+      peso: parseFloat(peso),
+      consumo: parseFloat(consumo),
+      observaciones: observaciones || null,
+      fecha: new Date(fecha)
+    });
     res.status(201).json(seguimiento);
   } catch (error) {
-    res.status(500).json({ error: 'Error al crear seguimiento' });
+    res.status(500).json({ error: 'Error al crear seguimiento: ' + error.message });
+  }
+});
+
+app.get('/seguimiento/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const seguimiento = await Seguimiento.findByPk(id);
+    if (!seguimiento) return res.status(404).json({ error: 'Seguimiento no encontrado' });
+    res.json(seguimiento);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener seguimiento: ' + error.message });
+  }
+});
+
+app.put('/seguimiento/:id', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { id } = req.params;
+    const { loteId, semana, peso, consumo, observaciones, fecha } = req.body;
+    const seguimiento = await Seguimiento.findByPk(id);
+    if (!seguimiento) return res.status(404).json({ error: 'Seguimiento no encontrado' });
+    await seguimiento.update({
+      loteId: loteId !== undefined ? parseInt(loteId) : seguimiento.loteId,
+      semana: semana !== undefined ? parseInt(semana) : seguimiento.semana,
+      peso: peso !== undefined ? parseFloat(peso) : seguimiento.peso,
+      consumo: consumo !== undefined ? parseFloat(consumo) : seguimiento.consumo,
+      observaciones: observaciones || seguimiento.observaciones,
+      fecha: fecha ? new Date(fecha) : seguimiento.fecha
+    });
+    res.json(seguimiento);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al actualizar seguimiento: ' + error.message });
+  }
+});
+
+app.delete('/seguimiento/:id', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { id } = req.params;
+    const seguimiento = await Seguimiento.findByPk(id);
+    if (!seguimiento) return res.status(404).json({ error: 'Seguimiento no encontrado' });
+    await seguimiento.destroy();
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: 'Error al eliminar seguimiento: ' + error.message });
   }
 });
 
