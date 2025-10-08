@@ -106,9 +106,7 @@ const Config = sequelize.define('Config', {
   notificaciones: { type: DataTypes.STRING, allowNull: false },
   idioma: { type: DataTypes.STRING, allowNull: false },
   nombreGranja: { type: DataTypes.STRING, allowNull: false },
-  vacunasGallinas: { type: DataTypes.TEXT },
-  vacunasPollos: { type: DataTypes.TEXT },
-  vacunasPavos: { type: DataTypes.TEXT }
+  vacunasGallinas: { type: DataTypes.TEXT }
 });
 
 // Definir relaciones explícitas
