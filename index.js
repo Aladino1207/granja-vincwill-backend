@@ -122,17 +122,18 @@ Lote.hasMany(Venta, { foreignKey: 'loteId' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
 // Sincronizar base de datos con depuración
-sequelize.sync({ alter: true }).then(async () => {
+// Reemplaza el bloque de sincronización con este IIFE asíncrono
+(async () => {
   try {
     await sequelize.authenticate();
     console.log('Conexión a la base de datos establecida');
-    await sequelize.sync({ alter: true }); // Ajusta las tablas existentes
+    await sequelize.sync({ alter: true }); // Sincroniza y ajusta las tablas
     console.log('Base de datos sincronizada con PostgreSQL');
-    // Verifica si la tabla Costos existe
-    const tableExists = await sequelize.getQueryInterface().showAllTables().then(tables => tables.includes('Costos'));
+    // Verifica si la tabla Inventarios existe
+    const tableExists = await sequelize.getQueryInterface().showAllTables().then(tables => tables.includes('Inventarios'));
     if (!tableExists) {
-      console.log('Tabla Costos no encontrada, forzando recreación');
-      await Costo.sync({ force: true }); // Usa force: true solo en desarrollo
+      console.log('Tabla Inventarios no encontrada, forzando recreación');
+      await Inventario.sync({ force: true }); // Usa force: true solo en desarrollo
     }
     const user = await User.findOne({ where: { email: 'admin@example.com' } });
     if (!user) {
@@ -157,6 +158,7 @@ sequelize.sync({ alter: true }).then(async () => {
     });
   } catch (error) {
     console.error('Error al conectar o sincronizar la base de datos:', error);
+    process.exit(1); // Sale del proceso si falla la sincronización
   }
 })();
 
