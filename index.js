@@ -122,18 +122,17 @@ Lote.hasMany(Venta, { foreignKey: 'loteId' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
 // Sincronizar base de datos con depuración
-// Reemplaza el bloque de sincronización con este IIFE asíncrono
 (async () => {
   try {
     await sequelize.authenticate();
     console.log('Conexión a la base de datos establecida');
-    await sequelize.sync({ alter: true }); // Sincroniza y ajusta las tablas
+    await sequelize.sync({ alter: true });
     console.log('Base de datos sincronizada con PostgreSQL');
     // Verifica si la tabla Inventarios existe
     const tableExists = await sequelize.getQueryInterface().showAllTables().then(tables => tables.includes('Inventarios'));
     if (!tableExists) {
       console.log('Tabla Inventarios no encontrada, forzando recreación');
-      await Inventario.sync({ force: true }); // Usa force: true solo en desarrollo
+      await Inventario.sync({ force: true });
     }
     const user = await User.findOne({ where: { email: 'admin@example.com' } });
     if (!user) {
@@ -157,8 +156,7 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
       vacunasPavos: ''
     });
   } catch (error) {
-    console.error('Error al conectar o sincronizar la base de datos:', error);
-    process.exit(1); // Sale del proceso si falla la sincronización
+    console.error('Error al conectar o sincronizar la base de datos, pero el servidor continuará:', error);
   }
 })();
 
@@ -583,4 +581,4 @@ app.post('/config', authenticate, async (req, res) => {
 
 // Inicia el servidor
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT} - Rutas registradas: ${Object.keys(app._router.stack).length}`));
