@@ -513,6 +513,43 @@ app.post('/inventario', authenticate, async (req, res) => {
   }
 });
 
+app.put('/inventario/:id', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { id } = req.params;
+    const { producto, categoria, cantidad, costo, fecha } = req.body;
+    const inventario = await Inventario.findByPk(id);
+    if (!inventario) return res.status(404).json({ error: 'Inventario no encontrado' });
+    await inventario.update({
+      producto: producto || inventario.producto,
+      categoria: categoria || inventario.categoria,
+      cantidad: cantidad !== undefined ? parseFloat(cantidad) : inventario.cantidad,
+      costo: costo !== undefined ? parseFloat(costo) : inventario.costo,
+      fecha: fecha ? new Date(fecha) : inventario.fecha
+    });
+    console.log('Inventario actualizado:', inventario.toJSON());
+    res.json(inventario);
+  } catch (error) {
+    console.error('Error al actualizar inventario:', error);
+    res.status(500).json({ error: 'Error al actualizar inventario: ' + error.message });
+  }
+});
+
+app.delete('/inventario/:id', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { id } = req.params;
+    const inventario = await Inventario.findByPk(id);
+    if (!inventario) return res.status(404).json({ error: 'Inventario no encontrado' });
+    await inventario.destroy();
+    console.log('Inventario eliminado con id:', id);
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error al eliminar inventario:', error);
+    res.status(500).json({ error: 'Error al eliminar inventario: ' + error.message });
+  }
+});
+
 // Endpoints CRUD para Config
 app.get('/config', authenticate, async (req, res) => {
   try {
