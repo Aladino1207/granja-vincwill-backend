@@ -473,12 +473,15 @@ app.post('/costos', authenticate, async (req, res) => {
 
 
 // Endpoints CRUD para Ventas
-app.get('/ventas', authenticate, async (req, res) => {
+app.get('/ventas/:id', authenticate, async (req, res) => {
   try {
-    const ventas = await Venta.findAll();
-    res.json(ventas);
+    const { id } = req.params;
+    const venta = await Venta.findByPk(id);
+    if (!venta) return res.status(404).json({ error: 'Venta no encontrada' });
+    res.json(venta);
   } catch (error) {
-    res.status(500).json({ error: 'Error al obtener ventas' });
+    console.error('Error al obtener venta por id:', error);
+    res.status(500).json({ error: 'Error al obtener venta: ' + error.message });
   }
 });
 
