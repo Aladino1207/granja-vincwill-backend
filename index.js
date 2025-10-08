@@ -262,19 +262,6 @@ app.put('/users/:id', authenticate, async (req, res) => {
   }
 });
 
-app.delete('/ventas/:id', authenticate, async (req, res) => {
-  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
-  try {
-    const { id } = req.params;
-    const venta = await Venta.findByPk(id);
-    if (!venta) return res.status(404).json({ error: 'Venta no encontrada' });
-    await venta.destroy();
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ error: 'Error al eliminar venta' });
-  }
-});
-
 // Endpoints CRUD para Lote
 app.get('/lotes', authenticate, async (req, res) => {
   try {
@@ -495,7 +482,7 @@ app.get('/ventas', authenticate, async (req, res) => {
 });
 
 app.post('/ventas', authenticate, async (req, res) => {
-  console.log('Solicitud POST /ventas recibida en el servidor:', req.body); // Log inicial
+  console.log('Solicitud POST /ventas recibida en el servidor:', req.body);
   if (req.user.role === 'viewer') {
     console.log('Acceso denegado para rol viewer');
     return res.status(403).json({ error: 'Acceso denegado' });
@@ -542,6 +529,73 @@ app.post('/ventas', authenticate, async (req, res) => {
       console.error('Error de base de datos:', error.original);
     }
     res.status(500).json({ error: 'Error al crear venta: ' + error.message });
+  }
+});
+
+app.put('/ventas/:id', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { id } = req.params;
+    const { loteId, cantidadVendida, peso, precio, fecha, cliente } = req.body;
+    const venta = await Venta.findByPk(id);
+    if (!venta) return res.status(404).json({ error: 'Venta no encontrada' });
+
+    // Verifica si el lote sigue siendo válido (opcional, según lógica)
+    const lote = await Lote.findByPk(loteId || venta.loteId);
+    if (!lote) return res.status(404).json({ error: 'Lote no encontrado' });
+
+    // Calcular diferencia para actualizar el lote (si cambia cantidadVendida)
+    const diferencia = (cantidadVendida || venta.cantidadVendida) - venta.cantidadVendida;
+
+    await sequelize.transaction(async (t) => {
+      await venta.update({
+        loteId: loteId || venta.loteId,
+        cantidadVendida: cantidadVendida !== undefined ? parseInt(cantidadVendida) : venta.cantidadVendida,
+        peso: peso !== undefined ? parseFloat(peso) : venta.peso,
+        precio: precio !== undefined ? parseFloat(precio) : venta.precio,
+        fecha: fecha || venta.fecha,
+        cliente: cliente || venta.cliente
+      }, { transaction: t });
+
+      if (diferencia !== 0 && loteId === venta.loteId) {
+        await lote.update({
+          cantidad: lote.cantidad + diferencia,
+          estado: (lote.cantidad + diferencia) > 0 ? 'disponible' : 'vendido'
+        }, { transaction: t });
+      }
+    });
+
+    console.log('Venta actualizada:', venta.toJSON());
+    res.json(venta);
+  } catch (error) {
+    console.error('Error al actualizar venta:', error);
+    res.status(500).json({ error: 'Error al actualizar venta: ' + error.message });
+  }
+});
+
+app.delete('/ventas/:id', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { id } = req.params;
+    const venta = await Venta.findByPk(id);
+    if (!venta) return res.status(404).json({ error: 'Venta no encontrada' });
+
+    const lote = await Lote.findByPk(venta.loteId);
+    if (!lote) return res.status(500).json({ error: 'Lote asociado no encontrado' });
+
+    await sequelize.transaction(async (t) => {
+      await venta.destroy({ transaction: t });
+      await lote.update({
+        cantidad: lote.cantidad + venta.cantidadVendida,
+        estado: lote.cantidad + venta.cantidadVendida > 0 ? 'disponible' : 'vendido'
+      }, { transaction: t });
+    });
+
+    console.log('Venta eliminada y lote actualizado:', id);
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error al eliminar venta:', error);
+    res.status(500).json({ error: 'Error al eliminar venta: ' + error.message });
   }
 });
 
