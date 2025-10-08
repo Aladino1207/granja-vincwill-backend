@@ -226,6 +226,79 @@ app.post('/create-admin', async (req, res) => {
   }
 });
 
+// Endpoint para generar reportes
+app.post('/reporte', authenticate, async (req, res) => {
+  const { tipoReporte, loteId, fechaInicio, fechaFin } = req.body;
+
+  try {
+    let data = [];
+    const whereClause = {
+      fecha: {
+        [Sequelize.Op.between]: [new Date(fechaInicio), new Date(fechaFin)]
+      }
+    };
+    if (loteId) whereClause.loteId = loteId;
+
+    switch (tipoReporte) {
+      case 'produccion':
+        const seguimiento = await Seguimiento.findAll({ where: whereClause });
+        data = seguimiento.map(s => ({
+          loteId: s.loteId,
+          semana: s.semana,
+          peso: s.peso,
+          consumo: s.consumo,
+          fecha: s.fecha.toISOString().split('T')[0]
+        }));
+        break;
+      case 'costos':
+        const costos = await Costo.findAll({ where: whereClause });
+        data = costos.map(c => ({
+          loteId: c.loteId,
+          categoria: c.categoria,
+          monto: c.monto,
+          fecha: c.fecha.toISOString().split('T')[0]
+        }));
+        break;
+      case 'ventas':
+        const ventas = await Venta.findAll({ where: whereClause });
+        data = ventas.map(v => ({
+          loteId: v.loteId,
+          cantidadVendida: v.cantidadVendida,
+          precioTotal: (v.peso * v.precio).toFixed(2),
+          fecha: v.fecha.toISOString().split('T')[0]
+        }));
+        break;
+      case 'sanitario':
+        const salud = await Salud.findAll({ where: whereClause });
+        data = salud.map(s => ({
+          loteId: s.loteId,
+          tipo: s.tipo,
+          nombre: s.nombre,
+          cantidad: s.cantidad,
+          fecha: s.fecha.toISOString().split('T')[0]
+        }));
+        break;
+      case 'seguimiento':
+        const seguimientoAll = await Seguimiento.findAll({ where: whereClause });
+        data = seguimientoAll.map(s => ({
+          loteId: s.loteId,
+          semana: s.semana,
+          peso: s.peso,
+          consumo: s.consumo,
+          fecha: s.fecha.toISOString().split('T')[0]
+        }));
+        break;
+      default:
+        return res.status(400).json({ error: 'Tipo de reporte no válido' });
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('Error al generar reporte:', error);
+    res.status(500).json({ error: 'Error al generar reporte: ' + error.message });
+  }
+});
+
 // Endpoints CRUD para User
 app.get('/users', authenticate, async (req, res) => {
   try {
