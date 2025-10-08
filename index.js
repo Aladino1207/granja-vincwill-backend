@@ -481,12 +481,16 @@ app.post('/ventas', authenticate, async (req, res) => {
 });
 
 // Endpoints CRUD para Inventario
-app.get('/inventario', authenticate, async (req, res) => {
+app.get('/inventario/:id', authenticate, async (req, res) => {
   try {
-    const inventario = await Inventario.findAll();
+    const { id } = req.params;
+    const inventario = await Inventario.findByPk(id);
+    if (!inventario) return res.status(404).json({ error: 'Inventario no encontrado' });
+    console.log('Inventario recuperado con id:', id, inventario.toJSON());
     res.json(inventario);
   } catch (error) {
-    res.status(500).json({ error: 'Error al obtener inventario' });
+    console.error('Error al obtener inventario por id:', error);
+    res.status(500).json({ error: 'Error al obtener inventario: ' + error.message });
   }
 });
 
