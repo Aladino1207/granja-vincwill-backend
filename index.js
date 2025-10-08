@@ -427,55 +427,6 @@ app.post('/salud', authenticate, async (req, res) => {
   }
 });
 
-app.get('/salud/:id', authenticate, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const salud = await Salud.findByPk(id);
-    if (!salud) return res.status(404).json({ error: 'Evento de salud no encontrado' });
-    res.json(salud);
-  } catch (error) {
-    console.error('Error al obtener evento de salud por id:', error);
-    res.status(500).json({ error: 'Error al obtener evento de salud: ' + error.message });
-  }
-});
-
-app.put('/salud/:id', authenticate, async (req, res) => {
-  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
-  try {
-    const { id } = req.params;
-    const { loteId, tipo, nombre, cantidad, fecha } = req.body;
-    const salud = await Salud.findByPk(id);
-    if (!salud) return res.status(404).json({ error: 'Evento de salud no encontrado' });
-    await salud.update({
-      loteId: loteId || salud.loteId,
-      tipo: tipo || salud.tipo,
-      nombre: nombre || salud.nombre,
-      cantidad: cantidad !== undefined ? parseFloat(cantidad) : salud.cantidad,
-      fecha: fecha || salud.fecha
-    });
-    console.log('Evento de salud actualizado:', salud.toJSON());
-    res.json(salud);
-  } catch (error) {
-    console.error('Error al actualizar evento de salud:', error);
-    res.status(500).json({ error: 'Error al actualizar evento de salud: ' + error.message });
-  }
-});
-
-app.delete('/salud/:id', authenticate, async (req, res) => {
-  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
-  try {
-    const { id } = req.params;
-    const salud = await Salud.findByPk(id);
-    if (!salud) return res.status(404).json({ error: 'Evento de salud no encontrado' });
-    await salud.destroy();
-    console.log('Evento de salud eliminado:', id);
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error al eliminar evento de salud:', error);
-    res.status(500).json({ error: 'Error al eliminar evento de salud: ' + error.message });
-  }
-});
-
 // Endpoints CRUD para Costos
 app.get('/costos', authenticate, async (req, res) => {
   try {
