@@ -241,52 +241,72 @@ app.post('/reporte', authenticate, async (req, res) => {
 
     switch (tipoReporte) {
       case 'produccion':
-        const seguimiento = await Seguimiento.findAll({ where: whereClause });
+        const seguimiento = await Seguimiento.findAll({ where: whereClause, include: [{ model: Lote }] });
         data = seguimiento.map(s => ({
-          loteId: s.loteId,
+          loteId: s.Lote.loteId,
           semana: s.semana,
-          peso: s.peso,
-          consumo: s.consumo,
+          pesoPromedio: s.peso,
+          consumoDiario: (s.consumo / 7).toFixed(2), // Convertir consumo semanal a diario
           fecha: s.fecha.toISOString().split('T')[0]
         }));
+        // Añadir resumen
+        const totalPeso = seguimiento.reduce((sum, s) => sum + s.peso, 0);
+        const avgPeso = data.length ? (totalPeso / data.length).toFixed(2) : 0;
+        data.push({ loteId: 'Total', semana: '', pesoPromedio: avgPeso, consumoDiario: '', fecha: '' });
         break;
       case 'costos':
-        const costos = await Costo.findAll({ where: whereClause });
+        const costos = await Costo.findAll({ where: whereClause, include: [{ model: Lote }] });
         data = costos.map(c => ({
-          loteId: c.loteId,
+          loteId: c.Lote.loteId,
           categoria: c.categoria,
-          monto: c.monto,
+          descripcion: c.descripcion,
+          monto: `$${c.monto.toFixed(2)}`,
           fecha: c.fecha.toISOString().split('T')[0]
         }));
+        // Añadir total
+        const totalCostos = costos.reduce((sum, c) => sum + c.monto, 0);
+        data.push({ loteId: 'Total', categoria: '', descripcion: '', monto: `$${totalCostos.toFixed(2)}`, fecha: '' });
         break;
       case 'ventas':
-        const ventas = await Venta.findAll({ where: whereClause });
+        const ventas = await Venta.findAll({ where: whereClause, include: [{ model: Lote }] });
         data = ventas.map(v => ({
-          loteId: v.loteId,
+          loteId: v.Lote.loteId,
           cantidadVendida: v.cantidadVendida,
-          precioTotal: (v.peso * v.precio).toFixed(2),
-          fecha: v.fecha.toISOString().split('T')[0]
+          pesoTotal: `${v.peso.toFixed(2)} kg`,
+          precioTotal: `$${((v.peso || 0) * v.precio).toFixed(2)}`,
+          fecha: v.fecha.toISOString().split('T')[0],
+          cliente: v.cliente || 'No especificado'
         }));
+        // Añadir total de ingresos
+        const totalIngresos = ventas.reduce((sum, v) => sum + (v.peso * v.precio), 0);
+        data.push({ loteId: 'Total', cantidadVendida: '', pesoTotal: '', precioTotal: `$${totalIngresos.toFixed(2)}`, fecha: '', cliente: '' });
         break;
       case 'sanitario':
-        const salud = await Salud.findAll({ where: whereClause });
+        const salud = await Salud.findAll({ where: whereClause, include: [{ model: Lote }] });
         data = salud.map(s => ({
-          loteId: s.loteId,
+          loteId: s.Lote.loteId,
           tipo: s.tipo,
           nombre: s.nombre,
           cantidad: s.cantidad,
-          fecha: s.fecha.toISOString().split('T')[0]
+          fecha: s.fecha.toISOString().split('T')[0],
+          impacto: s.tipo === 'Mortalidad' ? 'Alto' : 'Bajo'
         }));
+        // Añadir total de eventos
+        const totalEventos = salud.length;
+        data.push({ loteId: 'Total', tipo: '', nombre: '', cantidad: totalEventos, fecha: '', impacto: '' });
         break;
       case 'seguimiento':
-        const seguimientoAll = await Seguimiento.findAll({ where: whereClause });
+        const seguimientoAll = await Seguimiento.findAll({ where: whereClause, include: [{ model: Lote }] });
         data = seguimientoAll.map(s => ({
-          loteId: s.loteId,
+          loteId: s.Lote.loteId,
           semana: s.semana,
-          peso: s.peso,
-          consumo: s.consumo,
+          pesoPromedio: s.peso,
+          consumoTotal: s.consumo.toFixed(2),
           fecha: s.fecha.toISOString().split('T')[0]
         }));
+        // Añadir promedio de peso
+        const avgPesoSeguimiento = seguimientoAll.length ? (seguimientoAll.reduce((sum, s) => sum + s.peso, 0) / seguimientoAll.length).toFixed(2) : 0;
+        data.push({ loteId: 'Promedio', semana: '', pesoPromedio: avgPesoSeguimiento, consumoTotal: '', fecha: '' });
         break;
       default:
         return res.status(400).json({ error: 'Tipo de reporte no válido' });
