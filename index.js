@@ -471,6 +471,7 @@ app.post('/costos', authenticate, async (req, res) => {
   }
 });
 
+
 // Endpoints CRUD para Ventas
 app.get('/ventas', authenticate, async (req, res) => {
   try {
@@ -532,6 +533,18 @@ app.post('/ventas', authenticate, async (req, res) => {
   }
 });
 
+app.get('/ventas/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const venta = await Venta.findByPk(id);
+    if (!venta) return res.status(404).json({ error: 'Venta no encontrada' });
+    res.json(venta);
+  } catch (error) {
+    console.error('Error al obtener venta por id:', error);
+    res.status(500).json({ error: 'Error al obtener venta: ' + error.message });
+  }
+});
+
 app.put('/ventas/:id', authenticate, async (req, res) => {
   if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
   try {
@@ -540,11 +553,9 @@ app.put('/ventas/:id', authenticate, async (req, res) => {
     const venta = await Venta.findByPk(id);
     if (!venta) return res.status(404).json({ error: 'Venta no encontrada' });
 
-    // Verifica si el lote sigue siendo válido (opcional, según lógica)
     const lote = await Lote.findByPk(loteId || venta.loteId);
     if (!lote) return res.status(404).json({ error: 'Lote no encontrado' });
 
-    // Calcular diferencia para actualizar el lote (si cambia cantidadVendida)
     const diferencia = (cantidadVendida || venta.cantidadVendida) - venta.cantidadVendida;
 
     await sequelize.transaction(async (t) => {
