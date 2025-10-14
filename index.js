@@ -1,4 +1,4 @@
-const API_URL = 'https://granja-vincwill-backend.onrender.com';
+//const API_URL = 'https://granja-vincwill-backend.onrender.com';
 
 const express = require('express');
 const { Sequelize, DataTypes } = require('sequelize');
@@ -10,7 +10,7 @@ const app = express();
 
 // Configuración avanzada de CORS
 app.use(cors({
-  origin: 'https://granja-vincwill-frontend.vercel.app', 
+  origin: 'https://granja-vincwill-frontend.vercel.app',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
@@ -30,7 +30,20 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
     ssl: {
       require: true,
       rejectUnauthorized: false
-    }
+    },
+    keepAlive: true,
+    connectTimeout: 60000,
+    socketTimeout: 60000
+  },
+  pool: {
+    max: 5,
+    min: 0,
+    acquire: 30000,
+    idle: 10000
+  },
+  retry: {
+    match: [/SequelizeConnectionError/, /Connection terminated unexpectedly/],
+    max: 3
   }
 });
 
@@ -121,40 +134,49 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
 // Sincronizar base de datos con depuración
 (async () => {
-  try {
-    await sequelize.authenticate();
-    console.log('Conexión a la base de datos establecida');
-    await sequelize.sync({ alter: true });
-    console.log('Base de datos sincronizada con PostgreSQL');
-    // Verifica si la tabla Inventarios existe
-    const tableExists = await sequelize.getQueryInterface().showAllTables().then(tables => tables.includes('Inventarios'));
-    if (!tableExists) {
-      console.log('Tabla Inventarios no encontrada, forzando recreación');
-      await Inventario.sync({ force: true });
+  let retryCount = 0;
+  const maxRetries = 3;
+  while (retryCount < maxRetries) {
+    try {
+      await sequelize.authenticate();
+      console.log('Conexión a la base de datos establecida');
+      await sequelize.sync({ alter: true });
+      console.log('Base de datos sincronizada con PostgreSQL');
+      break;
+    } catch (error) {
+      retryCount++;
+      console.error(`Error al conectar (intento ${retryCount}/${maxRetries}):`, error);
+      if (retryCount >= maxRetries) {
+        console.error('Falló la conexión después de reintentos. El servidor continuará.');
+      }
+      await new Promise(resolve => setTimeout(resolve, 5000 * retryCount));
     }
+  }
+
+  try {
     const user = await User.findOne({ where: { email: 'admin@example.com' } });
     if (!user) {
-      const hashedPassword = bcryptjs.hashSync('admin123', 10);
-      const newUser = await User.create({
+      const hashedPassword = require('bcryptjs').hashSync('admin123', 10);
+      await User.create({
         name: 'Admin',
         email: 'admin@example.com',
         password: hashedPassword,
         role: 'admin'
       });
-      console.log('Usuario creado:', newUser.toJSON());
-    } else {
-      console.log('Usuario admin@example.com ya existe:', user.toJSON());
+      console.log('Usuario admin creado');
     }
-    await Config.create({
-      notificaciones: 'Activadas',
-      idioma: 'Español',
-      nombreGranja: 'Granja Avícola VincWill',
-      vacunasGallinas: '',
-      vacunasPollos: '',
-      vacunasPavos: ''
-    });
+    const config = await Config.findOne();
+    if (!config) {
+      await Config.create({
+        notificaciones: 'Activadas',
+        idioma: 'Español',
+        nombreGranja: 'Granja Avícola VincWill',
+        vacunasGallinas: ''
+      });
+      console.log('Configuración inicial creada');
+    }
   } catch (error) {
-    console.error('Error al conectar o sincronizar la base de datos, pero el servidor continuará:', error);
+    console.error('Error al crear datos iniciales:', error);
   }
 })();
 
