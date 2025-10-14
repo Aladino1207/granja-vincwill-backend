@@ -1,4 +1,4 @@
-//const API_URL = 'https://granja-vincwill-backend.onrender.com';
+
 
 const express = require('express');
 const { Sequelize, DataTypes } = require('sequelize');
