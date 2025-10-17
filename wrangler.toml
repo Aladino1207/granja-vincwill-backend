@@ -1,0 +1,9 @@
+﻿name = "granja-vincwill-backend"
+main = "src/index.js"
+compatibility_date = "2025-10-17"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+DATABASE_URL = "postgresql://neondb_owner:npg_z3WSXD5dPTGm@ep-broad-sun-ac5euzsd-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+JWT_SECRET = "gLjNnMVQY6ODu4VvFcHUhyT2w52Z0PhZ4ak6wEzj6Lo="
+PORT = "3000"
