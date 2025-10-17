@@ -912,5 +912,5 @@ app.delete('/config/:id', authenticate, async (req, res) => {
 });
 
 // Inicia el servidor
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT} - Rutas registradas: ${Object.keys(app._router.stack).length}`));
