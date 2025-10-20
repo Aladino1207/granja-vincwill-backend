@@ -560,6 +560,7 @@ app.get('/salud/:id', async (c) => {
   }
 });
 
+// ESTE ES EL CÓDIGO CORREGIDO
 app.put('/salud/:id', async (c) => {
   const user = c.get('user');
   if (user?.role === 'viewer') return c.json({ error: 'Acceso denegado' }, 403);
@@ -580,8 +581,7 @@ app.put('/salud/:id', async (c) => {
     });
     console.log('Evento de salud actualizado:', salud.toJSON());
     return c.json(salud);
-  } $^M
-  catch (error) {
+  } catch (error) {
     console.error('Error al actualizar evento de salud:', error);
     return c.json({ error: 'Error al actualizar evento de salud: ' + error.message }, 500);
   }
