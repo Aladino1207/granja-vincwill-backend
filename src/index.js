@@ -187,7 +187,7 @@ app.use('*', async (c, next) => {
     return c.json({ error: 'Token requerido' }, 401);
   }
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 10 });
     console.log('Token decodificado:', decoded);
     c.set('user', decoded);
     await next();
