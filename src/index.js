@@ -156,6 +156,13 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
         role: 'admin'
       });
       console.log('Usuario admin creado');
+    } else {
+    console.log('Usuario admin encontrado, forzando actualización de rol...');
+    await user.update({
+      role: 'admin',
+      password: hashedPassword
+    });
+    console.log('Usuario admin actualizado');
     }
     const config = await Config.findOne();
     if (!config) {
