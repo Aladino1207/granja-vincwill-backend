@@ -174,6 +174,13 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
 // Middleware de autenticación
 app.use('*', async (c, next) => {
+  // Excepción para rutas públicas que no necesitan token
+  if (c.req.path === '/' || c.req.path === '/login') {
+    await next();
+    return;
+  }
+
+  // El resto del middleware se aplica a todas las demás rutas
   const token = c.req.header('Authorization')?.split(' ')[1];
   console.log('Token recibido:', token);
   if (!token) {
@@ -209,8 +216,8 @@ app.post('/login', async (c) => {
     console.log('Login exitoso para usuario:', email);
     return c.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (error) {
-    console.error('Error en login:', error);
-    return c.json({ error: 'Error en login' }, 500);
+  console.error('Error detallado de login:', error.message);
+  return c.json({ error: 'Error en el servidor', detalle: error.message }, 500);
   }
 });
 
