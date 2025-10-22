@@ -15,22 +15,31 @@ app.use('*', cors({
   credentials: true
 }));
 
-// Configurar PostgreSQL con pg puro, deshabilitar hstore
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
   dialectModule: require('pg'),
-  logging: (msg) => console.log('SQL:', msg),
+  logging: false, // Desactiva logging para evitar sobrecarga en Cloudflare (actívalo solo para depuración)
   dialectOptions: {
     ssl: { require: true, rejectUnauthorized: false },
     keepAlive: true,
-    connectTimeout: 120000, // 120 segundos
-    socketTimeout: 120000  // 120 segundos
+    connectTimeout: 30000, // 30 segundos (límite de Cloudflare Workers en planes pagos)
+    socketTimeout: 30000  // 30 segundos
   },
-  pool: { max: 5, min: 0, acquire: 60000, idle: 20000 }, // 60 segundos para acquire
-  retry: { match: [/SequelizeConnectionError/, /Connection terminated unexpectedly/], max: 5 },
+  pool: {
+    max: 3, // Reduce el número máximo de conexiones para evitar sobrecarga
+    min: 0,
+    acquire: 30000, // 30 segundos
+    idle: 10000, // 10 segundos
+    evict: 30000 // Elimina conexiones inactivas cada 30 segundos
+  },
+  retry: {
+    match: [/SequelizeConnectionError/, /Connection terminated unexpectedly/, /ETIMEDOUT/],
+    max: 3, // Reduce reintentos para no exceder límites de tiempo
+    backoffBase: 1000, // Retardo inicial de 1 segundo entre reintentos
+    backoffExponent: 1.5 // Incremento exponencial
+  },
   define: {
     hooks: {
-      // Deshabilitar soporte para hstore
       beforeDefine: (attributes) => {
         Object.keys(attributes).forEach((key) => {
           if (attributes[key].type === DataTypes.HSTORE) {
@@ -38,8 +47,10 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
           }
         });
       }
-    }
-  }
+    },
+    timestamps: true // Asegura que createdAt y updatedAt se gestionen automáticamente
+  },
+  transactionType: Transaction.TYPES.IMMEDIATE // Usa transacciones más ligeras
 });
 
 // Definir modelos
