@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { Hono } = require('hono');
 const { cors } = require('hono/cors');
-const { Sequelize, DataTypes } = require('sequelize');
+const { Sequelize, DataTypes, Transaction } = require('sequelize'); // Importa Transaction
 const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
@@ -18,25 +18,25 @@ app.use('*', cors({
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
   dialectModule: require('pg'),
-  logging: false, // Desactiva logging para evitar sobrecarga en Cloudflare (actívalo solo para depuración)
+  logging: false, // Desactiva logging para producción (actívalo localmente si es necesario)
   dialectOptions: {
     ssl: { require: true, rejectUnauthorized: false },
     keepAlive: true,
-    connectTimeout: 30000, // 30 segundos (límite de Cloudflare Workers en planes pagos)
-    socketTimeout: 30000  // 30 segundos
+    connectTimeout: 20000, // Reduce a 20 segundos para alinearse con límites reales
+    socketTimeout: 20000  // Reduce a 20 segundos
   },
   pool: {
-    max: 3, // Reduce el número máximo de conexiones para evitar sobrecarga
+    max: 2, // Reduce aún más para evitar sobrecarga
     min: 0,
-    acquire: 30000, // 30 segundos
+    acquire: 20000, // 20 segundos
     idle: 10000, // 10 segundos
-    evict: 30000 // Elimina conexiones inactivas cada 30 segundos
+    evict: 20000 // Elimina conexiones inactivas cada 20 segundos
   },
   retry: {
     match: [/SequelizeConnectionError/, /Connection terminated unexpectedly/, /ETIMEDOUT/],
-    max: 3, // Reduce reintentos para no exceder límites de tiempo
-    backoffBase: 1000, // Retardo inicial de 1 segundo entre reintentos
-    backoffExponent: 1.5 // Incremento exponencial
+    max: 2, // Reduce reintentos para minimizar tiempo total
+    backoffBase: 1000,
+    backoffExponent: 1.5
   },
   define: {
     hooks: {
@@ -48,9 +48,8 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
         });
       }
     },
-    timestamps: true // Asegura que createdAt y updatedAt se gestionen automáticamente
-  },
-  transactionType: Transaction.TYPES.IMMEDIATE // Usa transacciones más ligeras
+    timestamps: true
+  }
 });
 
 // Definir modelos
@@ -62,13 +61,12 @@ const User = sequelize.define('User', {
 });
 
 const Lote = sequelize.define('Lote', {
-  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   loteId: { type: DataTypes.STRING, unique: true, allowNull: false },
   cantidad: { type: DataTypes.INTEGER, allowNull: false },
   pesoInicial: { type: DataTypes.FLOAT, allowNull: false },
   fechaIngreso: { type: DataTypes.DATE, allowNull: false },
   estado: { type: DataTypes.STRING, allowNull: false, defaultValue: 'disponible' }
-});
+}, { timestamps: true });
 
 const Seguimiento = sequelize.define('Seguimiento', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
