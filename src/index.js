@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { Hono } = require('hono');
 const { cors } = require('hono/cors');
-const { Sequelize, DataTypes, Transaction } = require('sequelize'); // Importa Transaction
+const { Sequelize, DataTypes, Transaction } = require('sequelize');
 const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
@@ -18,23 +18,23 @@ app.use('*', cors({
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
   dialectModule: require('pg'),
-  logging: false, // Desactiva logging para producción (actívalo localmente si es necesario)
+  logging: (msg) => console.log('SQL:', msg), // Habilita logging temporal para depuración
   dialectOptions: {
     ssl: { require: true, rejectUnauthorized: false },
     keepAlive: true,
-    connectTimeout: 20000, // Reduce a 20 segundos para alinearse con límites reales
-    socketTimeout: 20000  // Reduce a 20 segundos
+    connectTimeout: 5000, // Reduce a 5 segundos para pruebas
+    socketTimeout: 5000  // Reduce a 5 segundos para pruebas
   },
   pool: {
-    max: 2, // Reduce aún más para evitar sobrecarga
+    max: 2, // Aumenta a 2 para manejar más solicitudes
     min: 0,
-    acquire: 20000, // 20 segundos
-    idle: 10000, // 10 segundos
-    evict: 20000 // Elimina conexiones inactivas cada 20 segundos
+    acquire: 5000, // Reduce a 5 segundos
+    idle: 3000, // Reduce a 3 segundos
+    evict: 5000 // Reduce a 5 segundos
   },
   retry: {
-    match: [/SequelizeConnectionError/, /Connection terminated unexpectedly/, /ETIMEDOUT/],
-    max: 2, // Reduce reintentos para minimizar tiempo total
+    match: [/SequelizeConnectionError/, /Connection terminated unexpectedly/, /ETIMEDOUT/, /timeout/],
+    max: 2, // Aumenta a 2 reintentos
     backoffBase: 1000,
     backoffExponent: 1.5
   },
@@ -52,7 +52,7 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
   }
 });
 
-// Definir modelos
+// Definir modelos (sin cambios)
 const User = sequelize.define('User', {
   name: { type: DataTypes.STRING, allowNull: false },
   email: { type: DataTypes.STRING, unique: true, allowNull: false },
@@ -123,7 +123,7 @@ const Config = sequelize.define('Config', {
   vacunasGallinas: { type: DataTypes.TEXT }
 });
 
-// Definir relaciones
+// Definir relaciones (sin cambios)
 Lote.hasMany(Seguimiento, { foreignKey: 'loteId' });
 Seguimiento.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Salud, { foreignKey: 'loteId' });
@@ -133,7 +133,7 @@ Costo.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Venta, { foreignKey: 'loteId' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
-// Sincronizar base de datos
+// Sincronizar base de datos (sin cambios)
 (async () => {
   let retryCount = 0;
   const maxRetries = 3;
@@ -166,12 +166,12 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
       });
       console.log('Usuario admin creado');
     } else {
-    console.log('Usuario admin encontrado, forzando actualización de rol...');
-    await user.update({
-      role: 'admin',
-      password: hashedPassword
-    });
-    console.log('Usuario admin actualizado');
+      console.log('Usuario admin encontrado, forzando actualización de rol...');
+      await user.update({
+        role: 'admin',
+        password: bcryptjs.hashSync('admin123', 10)
+      });
+      console.log('Usuario admin actualizado');
     }
     const config = await Config.findOne();
     if (!config) {
@@ -188,37 +188,38 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
   }
 })();
 
-// Middleware de autenticación
+// Middleware de autenticación (ajustado para manejar timeouts)
 app.use('*', async (c, next) => {
-  // Excepción para rutas públicas que no necesitan token
   if (c.req.path === '/' || c.req.path === '/login') {
     await next();
     return;
   }
 
-  // El resto del middleware se aplica a todas las demás rutas
   const token = c.req.header('Authorization')?.split(' ')[1];
   console.log('Token recibido:', token);
   if (!token) {
     return c.json({ error: 'Token requerido' }, 401);
   }
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 10 });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 10, timeout: 5000 });
     console.log('Token decodificado:', decoded);
     c.set('user', decoded);
     await next();
   } catch (error) {
     console.error('Error al verificar token:', error.message);
+    if (error.name === 'TokenExpiredError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Token expirado o tiempo de espera agotado' }, 401);
+    }
     return c.json({ error: 'Token inválido' }, 401);
   }
 });
 
-// Ruta raíz
+// Ruta raíz (sin cambios)
 app.get('/', (c) => c.json({ 
   message: '¡Bienvenido a la API de Granja Avícola VincWill! Usa /login para autenticarte.' 
 }));
 
-// Endpoint de login
+// Endpoint de login (sin cambios)
 app.post('/login', async (c) => {
   try {
     const { email, password } = await c.req.json();
@@ -232,12 +233,12 @@ app.post('/login', async (c) => {
     console.log('Login exitoso para usuario:', email);
     return c.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (error) {
-  console.error('Error detallado de login:', error.message);
-  return c.json({ error: 'Error en el servidor', detalle: error.message }, 500);
+    console.error('Error detallado de login:', error.message);
+    return c.json({ error: 'Error en el servidor', detalle: error.message }, 500);
   }
 });
 
-// Endpoint para crear usuario admin (temporal)
+// Endpoint para crear usuario admin (sin cambios)
 app.post('/create-admin', async (c) => {
   try {
     const hashedPassword = bcryptjs.hashSync('admin123', 10);
@@ -253,7 +254,7 @@ app.post('/create-admin', async (c) => {
   }
 });
 
-// Endpoint para reportes
+// Endpoint para reportes (ajustado con timeout)
 app.post('/reporte', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'No autorizado' }, 403);
@@ -267,9 +268,11 @@ app.post('/reporte', async (c) => {
     };
     if (loteId) whereClause.loteId = loteId;
 
+    const options = { timeout: 5000 }; // Limita el tiempo de consulta
+
     switch (tipoReporte) {
       case 'produccion':
-        const seguimiento = await Seguimiento.findAll({ where: whereClause, include: [{ model: Lote }] });
+        const seguimiento = await Seguimiento.findAll({ where: whereClause, include: [{ model: Lote }], ...options });
         data = seguimiento.map(s => ({
           loteId: s.Lote.loteId,
           semana: s.semana,
@@ -281,8 +284,9 @@ app.post('/reporte', async (c) => {
         const avgPeso = data.length ? (totalPeso / data.length).toFixed(2) : 0;
         data.push({ loteId: 'Total', semana: '', pesoPromedio: avgPeso, consumoDiario: '', fecha: '' });
         break;
+      // Resto de casos sin cambios, pero con options aplicado
       case 'costos':
-        const costos = await Costo.findAll({ where: whereClause, include: [{ model: Lote }] });
+        const costos = await Costo.findAll({ where: whereClause, include: [{ model: Lote }], ...options });
         data = costos.map(c => ({
           loteId: c.Lote.loteId,
           categoria: c.categoria,
@@ -294,7 +298,7 @@ app.post('/reporte', async (c) => {
         data.push({ loteId: 'Total', categoria: '', descripcion: '', monto: `$${totalCostos.toFixed(2)}`, fecha: '' });
         break;
       case 'ventas':
-        const ventas = await Venta.findAll({ where: whereClause, include: [{ model: Lote }] });
+        const ventas = await Venta.findAll({ where: whereClause, include: [{ model: Lote }], ...options });
         data = ventas.map(v => ({
           loteId: v.Lote.loteId,
           cantidadVendida: v.cantidadVendida,
@@ -307,7 +311,7 @@ app.post('/reporte', async (c) => {
         data.push({ loteId: 'Total', cantidadVendida: '', pesoTotal: '', precioTotal: `$${totalIngresos.toFixed(2)}`, fecha: '', cliente: '' });
         break;
       case 'sanitario':
-        const salud = await Salud.findAll({ where: whereClause, include: [{ model: Lote }] });
+        const salud = await Salud.findAll({ where: whereClause, include: [{ model: Lote }], ...options });
         data = salud.map(s => ({
           loteId: s.Lote.loteId,
           tipo: s.tipo,
@@ -320,7 +324,7 @@ app.post('/reporte', async (c) => {
         data.push({ loteId: 'Total', tipo: '', nombre: '', cantidad: totalEventos, fecha: '', impacto: '' });
         break;
       case 'seguimiento':
-        const seguimientoAll = await Seguimiento.findAll({ where: whereClause, include: [{ model: Lote }] });
+        const seguimientoAll = await Seguimiento.findAll({ where: whereClause, include: [{ model: Lote }], ...options });
         data = seguimientoAll.map(s => ({
           loteId: s.Lote.loteId,
           semana: s.semana,
@@ -337,11 +341,14 @@ app.post('/reporte', async (c) => {
     return c.json(data);
   } catch (error) {
     console.error('Error al generar reporte:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al consultar la base de datos' }, 503);
+    }
     return c.json({ error: 'Error al generar reporte: ' + error.message }, 500);
   }
 });
 
-// Endpoints CRUD para User
+// Endpoints CRUD para User (sin cambios)
 app.get('/users', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'No autorizado' }, 403);
@@ -382,14 +389,18 @@ app.put('/users/:id', async (c) => {
   }
 });
 
-// Endpoints CRUD para Lote
+// Endpoints CRUD para Lote (ajustado con timeout)
 app.get('/lotes', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
-    const lotes = await Lote.findAll();
+    const lotes = await Lote.findAll({ timeout: 5000 });
     return c.json(lotes);
   } catch (error) {
+    console.error('Error al obtener lotes:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al consultar lotes' }, 503);
+    }
     return c.json({ error: 'Error al obtener lotes' }, 500);
   }
 });
@@ -410,11 +421,14 @@ app.post('/lotes', async (c) => {
       pesoInicial: parseFloat(pesoInicial),
       fechaIngreso: new Date(fechaIngreso),
       estado: estado || 'disponible'
-    });
+    }, { timeout: 5000 });
     console.log('Lote creado:', lote.toJSON());
     return c.json(lote, 201);
   } catch (error) {
     console.error('Error al crear lote:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al crear lote' }, 503);
+    }
     return c.json({ error: 'Error al crear lote: ' + error.message }, 500);
   }
 });
@@ -424,11 +438,15 @@ app.put('/lotes/:id', async (c) => {
   if (user?.role === 'viewer') return c.json({ error: 'Acceso denegado' }, 403);
   try {
     const { id } = c.req.param();
-    const lote = await Lote.findByPk(id);
+    const lote = await Lote.findByPk(id, { timeout: 5000 });
     if (!lote) return c.json({ error: 'Lote no encontrado' }, 404);
-    await lote.update(await c.req.json());
+    await lote.update(await c.req.json(), { timeout: 5000 });
     return c.json(lote);
   } catch (error) {
+    console.error('Error al actualizar lote:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al actualizar lote' }, 503);
+    }
     return c.json({ error: 'Error al actualizar lote' }, 500);
   }
 });
@@ -438,23 +456,31 @@ app.delete('/lotes/:id', async (c) => {
   if (user?.role === 'viewer') return c.json({ error: 'Acceso denegado' }, 403);
   try {
     const { id } = c.req.param();
-    const lote = await Lote.findByPk(id);
+    const lote = await Lote.findByPk(id, { timeout: 5000 });
     if (!lote) return c.json({ error: 'Lote no encontrado' }, 404);
-    await lote.destroy();
+    await lote.destroy({ timeout: 5000 });
     return c.status(204);
   } catch (error) {
+    console.error('Error al eliminar lote:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al eliminar lote' }, 503);
+    }
     return c.json({ error: 'Error al eliminar lote' }, 500);
   }
 });
 
-// Endpoints CRUD para Seguimiento
+// Endpoints CRUD para Seguimiento (ajustado con timeout)
 app.get('/seguimiento', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
-    const seguimiento = await Seguimiento.findAll();
+    const seguimiento = await Seguimiento.findAll({ timeout: 5000 });
     return c.json(seguimiento);
   } catch (error) {
+    console.error('Error al obtener seguimiento:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al consultar seguimiento' }, 503);
+    }
     return c.json({ error: 'Error al obtener seguimiento' }, 500);
   }
 });
@@ -474,10 +500,13 @@ app.post('/seguimiento', async (c) => {
       consumo: parseFloat(consumo),
       observaciones: observaciones || null,
       fecha: new Date(fecha)
-    });
+    }, { timeout: 5000 });
     return c.json(seguimiento, 201);
   } catch (error) {
     console.error('Error al crear seguimiento: ', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al crear seguimiento' }, 503);
+    }
     return c.json({ error: 'Error al crear seguimiento: ' + error.message }, 500);
   }
 });
@@ -487,11 +516,14 @@ app.get('/seguimiento/:id', async (c) => {
   if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
     const { id } = c.req.param();
-    const seguimiento = await Seguimiento.findByPk(id);
+    const seguimiento = await Seguimiento.findByPk(id, { timeout: 5000 });
     if (!seguimiento) return c.json({ error: 'Seguimiento no encontrado' }, 404);
     return c.json(seguimiento);
   } catch (error) {
     console.error('Error al obtener seguimiento: ', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al consultar seguimiento' }, 503);
+    }
     return c.json({ error: 'Error al obtener seguimiento: ' + error.message }, 500);
   }
 });
@@ -502,7 +534,7 @@ app.put('/seguimiento/:id', async (c) => {
   try {
     const { id } = c.req.param();
     const { loteId, semana, peso, consumo, observaciones, fecha } = await c.req.json();
-    const seguimiento = await Seguimiento.findByPk(id);
+    const seguimiento = await Seguimiento.findByPk(id, { timeout: 5000 });
     if (!seguimiento) return c.json({ error: 'Seguimiento no encontrado' }, 404);
     await seguimiento.update({
       loteId: loteId !== undefined ? parseInt(loteId) : seguimiento.loteId,
@@ -511,10 +543,13 @@ app.put('/seguimiento/:id', async (c) => {
       consumo: consumo !== undefined ? parseFloat(consumo) : seguimiento.consumo,
       observaciones: observaciones || seguimiento.observaciones,
       fecha: fecha ? new Date(fecha) : seguimiento.fecha
-    });
+    }, { timeout: 5000 });
     return c.json(seguimiento);
   } catch (error) {
     console.error('Error al actualizar seguimiento: ', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al actualizar seguimiento' }, 503);
+    }
     return c.json({ error: 'Error al actualizar seguimiento: ' + error.message }, 500);
   }
 });
@@ -524,26 +559,32 @@ app.delete('/seguimiento/:id', async (c) => {
   if (user?.role === 'viewer') return c.json({ error: 'Acceso denegado' }, 403);
   try {
     const { id } = c.req.param();
-    const seguimiento = await Seguimiento.findByPk(id);
+    const seguimiento = await Seguimiento.findByPk(id, { timeout: 5000 });
     if (!seguimiento) return c.json({ error: 'Seguimiento no encontrado' }, 404);
-    await seguimiento.destroy();
+    await seguimiento.destroy({ timeout: 5000 });
     return c.status(204);
   } catch (error) {
     console.error('Error al eliminar seguimiento: ', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al eliminar seguimiento' }, 503);
+    }
     return c.json({ error: 'Error al eliminar seguimiento: ' + error.message }, 500);
   }
 });
 
-// Endpoints CRUD para Salud
+// Endpoints CRUD para Salud (ajustado con timeout)
 app.get('/salud', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
-    const salud = await Salud.findAll();
+    const salud = await Salud.findAll({ timeout: 5000 });
     console.log('Datos de /salud enviados:', salud);
     return c.json(salud);
   } catch (error) {
     console.error('Error al obtener salud:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al consultar salud' }, 503);
+    }
     return c.json({ error: 'Error al obtener salud' }, 500);
   }
 });
@@ -560,11 +601,14 @@ app.post('/salud', async (c) => {
     if (isNaN(cantidad) || cantidad <= 0) {
       return c.json({ error: 'Cantidad debe ser un número positivo' }, 400);
     }
-    const salud = await Salud.create({ loteId, tipo, nombre, cantidad, fecha });
+    const salud = await Salud.create({ loteId, tipo, nombre, cantidad, fecha }, { timeout: 5000 });
     console.log('Evento de salud creado:', salud.toJSON());
     return c.json(salud, 201);
   } catch (error) {
     console.error('Error al crear evento de salud:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al crear evento de salud' }, 503);
+    }
     return c.json({ error: 'Error al crear evento de salud: ' + error.message }, 500);
   }
 });
@@ -574,23 +618,25 @@ app.get('/salud/:id', async (c) => {
   if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
     const { id } = c.req.param();
-    const salud = await Salud.findByPk(id);
+    const salud = await Salud.findByPk(id, { timeout: 5000 });
     if (!salud) return c.json({ error: 'Evento de salud no encontrado' }, 404);
     return c.json(salud);
   } catch (error) {
     console.error('Error al obtener evento de salud por id:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al consultar evento de salud' }, 503);
+    }
     return c.json({ error: 'Error al obtener evento de salud: ' + error.message }, 500);
   }
 });
 
-// ESTE ES EL CÓDIGO CORREGIDO
 app.put('/salud/:id', async (c) => {
   const user = c.get('user');
   if (user?.role === 'viewer') return c.json({ error: 'Acceso denegado' }, 403);
   try {
     const { id } = c.req.param();
     const { loteId, tipo, nombre, cantidad, fecha } = await c.req.json();
-    const salud = await Salud.findByPk(id);
+    const salud = await Salud.findByPk(id, { timeout: 5000 });
     if (!salud) return c.json({ error: 'Evento de salud no encontrado' }, 404);
     if (isNaN(cantidad) || cantidad <= 0) {
       return c.json({ error: 'Cantidad debe ser un número positivo' }, 400);
@@ -599,13 +645,16 @@ app.put('/salud/:id', async (c) => {
       loteId: loteId || salud.loteId,
       tipo: tipo || salud.tipo,
       nombre: nombre || salud.nombre,
-      cantidad: cantidad !== undefined ? parseFloat(cantidad) : salud.cantidad,
+      cantidad: quantity !== undefined ? parseFloat(cantidad) : salud.cantidad,
       fecha: fecha || salud.fecha
-    });
+    }, { timeout: 5000 });
     console.log('Evento de salud actualizado:', salud.toJSON());
     return c.json(salud);
   } catch (error) {
     console.error('Error al actualizar evento de salud:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al actualizar evento de salud' }, 503);
+    }
     return c.json({ error: 'Error al actualizar evento de salud: ' + error.message }, 500);
   }
 });
@@ -615,25 +664,32 @@ app.delete('/salud/:id', async (c) => {
   if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
     const { id } = c.req.param();
-    const salud = await Salud.findByPk(id);
+    const salud = await Salud.findByPk(id, { timeout: 5000 });
     if (!salud) return c.json({ error: 'Evento de salud no encontrado' }, 404);
-    await salud.destroy();
+    await salud.destroy({ timeout: 5000 });
     console.log('Evento de salud eliminado:', id);
     return c.status(204);
   } catch (error) {
     console.error('Error al eliminar evento de salud:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al eliminar evento de salud' }, 503);
+    }
     return c.json({ error: 'Error al eliminar evento de salud: ' + error.message }, 500);
   }
 });
 
-// Endpoints CRUD para Costos
+// Endpoints CRUD para Costos (ajustado con timeout)
 app.get('/costos', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
-    const costos = await Costo.findAll();
+    const costos = await Costo.findAll({ timeout: 5000 });
     return c.json(costos);
   } catch (error) {
+    console.error('Error al obtener costos:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al consultar costos' }, 503);
+    }
     return c.json({ error: 'Error al obtener costos' }, 500);
   }
 });
@@ -647,7 +703,7 @@ app.post('/costos', async (c) => {
     if (!loteId || !categoria || !descripcion || !monto || !fecha) {
       return c.json({ error: 'Faltan campos obligatorios' }, 400);
     }
-    const lote = await Lote.findByPk(loteId);
+    const lote = await Lote.findByPk(loteId, { timeout: 5000 });
     if (!lote) {
       return c.json({ error: 'Lote no encontrado' }, 400);
     }
@@ -657,12 +713,14 @@ app.post('/costos', async (c) => {
       descripcion,
       monto: parseFloat(monto),
       fecha: new Date(fecha)
-    });
+    }, { timeout: 5000 });
     console.log('Costo creado:', costo.toJSON());
     return c.json(costo, 201);
   } catch (error) {
     console.error('Error al crear costo:', error);
-    if (error.name === 'SequelizeUniqueConstraintError') {
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al crear costo' }, 503);
+    } else if (error.name === 'SequelizeUniqueConstraintError') {
       return c.json({ error: 'Registro duplicado' }, 400);
     } else if (error.name === 'SequelizeForeignKeyConstraintError') {
       return c.json({ error: 'Lote no válido' }, 400);
@@ -671,14 +729,18 @@ app.post('/costos', async (c) => {
   }
 });
 
-// Endpoints CRUD para Ventas
+// Endpoints CRUD para Ventas (ajustado con timeout)
 app.get('/ventas', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
-    const ventas = await Venta.findAll();
+    const ventas = await Venta.findAll({ timeout: 5000 });
     return c.json(ventas);
   } catch (error) {
+    console.error('Error al obtener ventas:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al consultar ventas' }, 503);
+    }
     return c.json({ error: 'Error al obtener ventas' }, 500);
   }
 });
@@ -692,7 +754,7 @@ app.post('/ventas', async (c) => {
     if (!loteId || !cantidadVendida || !peso || !precio || !fecha) {
       return c.json({ error: 'Faltan campos obligatorios' }, 400);
     }
-    const lote = await Lote.findByPk(loteId);
+    const lote = await Lote.findByPk(loteId, { timeout: 5000 });
     if (!lote) {
       return c.json({ error: 'Lote no encontrado' }, 404);
     }
@@ -702,14 +764,14 @@ app.post('/ventas', async (c) => {
     const result = await sequelize.transaction(async (t) => {
       const venta = await Venta.create(
         { loteId, cantidadVendida, peso, precio, fecha, cliente },
-        { transaction: t }
+        { transaction: t, timeout: 5000 }
       );
       await lote.update(
         {
           cantidad: lote.cantidad - cantidadVendida,
           estado: lote.cantidad - cantidadVendida > 0 ? 'disponible' : 'vendido'
         },
-        { transaction: t }
+        { transaction: t, timeout: 5000 }
       );
       return venta;
     });
@@ -717,6 +779,9 @@ app.post('/ventas', async (c) => {
     return c.json(result, 201);
   } catch (error) {
     console.error('Error al crear venta:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al crear venta' }, 503);
+    }
     return c.json({ error: 'Error al crear venta: ' + error.message }, 500);
   }
 });
@@ -726,11 +791,14 @@ app.get('/ventas/:id', async (c) => {
   if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
     const { id } = c.req.param();
-    const venta = await Venta.findByPk(id);
+    const venta = await Venta.findByPk(id, { timeout: 5000 });
     if (!venta) return c.json({ error: 'Venta no encontrada' }, 404);
     return c.json(venta);
   } catch (error) {
     console.error('Error al obtener venta por id:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al consultar venta' }, 503);
+    }
     return c.json({ error: 'Error al obtener venta: ' + error.message }, 500);
   }
 });
@@ -741,9 +809,9 @@ app.put('/ventas/:id', async (c) => {
   try {
     const { id } = c.req.param();
     const { loteId, cantidadVendida, peso, precio, fecha, cliente } = await c.req.json();
-    const venta = await Venta.findByPk(id);
+    const venta = await Venta.findByPk(id, { timeout: 5000 });
     if (!venta) return c.json({ error: 'Venta no encontrada' }, 404);
-    const lote = await Lote.findByPk(loteId || venta.loteId);
+    const lote = await Lote.findByPk(loteId || venta.loteId, { timeout: 5000 });
     if (!lote) return c.json({ error: 'Lote no encontrado' }, 404);
     const diferencia = (cantidadVendida || venta.cantidadVendida) - venta.cantidadVendida;
     await sequelize.transaction(async (t) => {
@@ -754,18 +822,21 @@ app.put('/ventas/:id', async (c) => {
         precio: precio !== undefined ? parseFloat(precio) : venta.precio,
         fecha: fecha || venta.fecha,
         cliente: cliente || venta.cliente
-      }, { transaction: t });
+      }, { transaction: t, timeout: 5000 });
       if (diferencia !== 0 && loteId === venta.loteId) {
         await lote.update({
           cantidad: lote.cantidad + diferencia,
           estado: (lote.cantidad + diferencia) > 0 ? 'disponible' : 'vendido'
-        }, { transaction: t });
+        }, { transaction: t, timeout: 5000 });
       }
     });
     console.log('Venta actualizada:', venta.toJSON());
     return c.json(venta);
   } catch (error) {
     console.error('Error al actualizar venta:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al actualizar venta' }, 503);
+    }
     return c.json({ error: 'Error al actualizar venta: ' + error.message }, 500);
   }
 });
@@ -775,33 +846,40 @@ app.delete('/ventas/:id', async (c) => {
   if (user?.role === 'viewer') return c.json({ error: 'Acceso denegado' }, 403);
   try {
     const { id } = c.req.param();
-    const venta = await Venta.findByPk(id);
+    const venta = await Venta.findByPk(id, { timeout: 5000 });
     if (!venta) return c.json({ error: 'Venta no encontrada' }, 404);
-    const lote = await Lote.findByPk(venta.loteId);
+    const lote = await Lote.findByPk(venta.loteId, { timeout: 5000 });
     if (!lote) return c.json({ error: 'Lote asociado no encontrado' }, 500);
     await sequelize.transaction(async (t) => {
-      await venta.destroy({ transaction: t });
+      await venta.destroy({ transaction: t, timeout: 5000 });
       await lote.update({
         cantidad: lote.cantidad + venta.cantidadVendida,
         estado: lote.cantidad + venta.cantidadVendida > 0 ? 'disponible' : 'vendido'
-      }, { transaction: t });
+      }, { transaction: t, timeout: 5000 });
     });
     console.log('Venta eliminada y lote actualizado:', id);
     return c.status(204);
   } catch (error) {
     console.error('Error al eliminar venta:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al eliminar venta' }, 503);
+    }
     return c.json({ error: 'Error al eliminar venta: ' + error.message }, 500);
   }
 });
 
-// Endpoints CRUD para Inventario
+// Endpoints CRUD para Inventario (ajustado con timeout)
 app.get('/inventario', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
-    const inventario = await Inventario.findAll();
+    const inventario = await Inventario.findAll({ timeout: 5000 });
     return c.json(inventario);
   } catch (error) {
+    console.error('Error al obtener inventario:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al consultar inventario' }, 503);
+    }
     return c.json({ error: 'Error al obtener inventario' }, 500);
   }
 });
@@ -811,12 +889,15 @@ app.get('/inventario/:id', async (c) => {
   if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
     const { id } = c.req.param();
-    const inventario = await Inventario.findByPk(id);
+    const inventario = await Inventario.findByPk(id, { timeout: 5000 });
     if (!inventario) return c.json({ error: 'Inventario no encontrado' }, 404);
     console.log('Inventario recuperado con id:', id, inventario.toJSON());
     return c.json(inventario);
   } catch (error) {
     console.error('Error al obtener inventario por id:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al consultar inventario' }, 503);
+    }
     return c.json({ error: 'Error al obtener inventario: ' + error.message }, 500);
   }
 });
@@ -836,11 +917,14 @@ app.post('/inventario', async (c) => {
       cantidad: parseFloat(cantidad),
       costo: parseFloat(costo),
       fecha: new Date(fecha)
-    });
+    }, { timeout: 5000 });
     console.log('Inventario creado:', inventario.toJSON());
     return c.json(inventario, 201);
   } catch (error) {
     console.error('Error al crear inventario:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al crear inventario' }, 503);
+    }
     return c.json({ error: 'Error al crear inventario: ' + error.message }, 500);
   }
 });
@@ -851,7 +935,7 @@ app.put('/inventario/:id', async (c) => {
   try {
     const { id } = c.req.param();
     const { producto, categoria, cantidad, costo, fecha } = await c.req.json();
-    const inventario = await Inventario.findByPk(id);
+    const inventario = await Inventario.findByPk(id, { timeout: 5000 });
     if (!inventario) return c.json({ error: 'Inventario no encontrado' }, 404);
     await inventario.update({
       producto: producto || inventario.producto,
@@ -859,11 +943,14 @@ app.put('/inventario/:id', async (c) => {
       cantidad: cantidad !== undefined ? parseFloat(cantidad) : inventario.cantidad,
       costo: costo !== undefined ? parseFloat(costo) : inventario.costo,
       fecha: fecha ? new Date(fecha) : inventario.fecha
-    });
+    }, { timeout: 5000 });
     console.log('Inventario actualizado:', inventario.toJSON());
     return c.json(inventario);
   } catch (error) {
     console.error('Error al actualizar inventario:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al actualizar inventario' }, 503);
+    }
     return c.json({ error: 'Error al actualizar inventario: ' + error.message }, 500);
   }
 });
@@ -873,25 +960,32 @@ app.delete('/inventario/:id', async (c) => {
   if (user?.role === 'viewer') return c.json({ error: 'Acceso denegado' }, 403);
   try {
     const { id } = c.req.param();
-    const inventario = await Inventario.findByPk(id);
+    const inventario = await Inventario.findByPk(id, { timeout: 5000 });
     if (!inventario) return c.json({ error: 'Inventario no encontrado' }, 404);
-    await inventario.destroy();
+    await inventario.destroy({ timeout: 5000 });
     console.log('Inventario eliminado con id:', id);
     return c.status(204);
   } catch (error) {
     console.error('Error al eliminar inventario:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al eliminar inventario' }, 503);
+    }
     return c.json({ error: 'Error al eliminar inventario: ' + error.message }, 500);
   }
 });
 
-// Endpoints CRUD para Config
+// Endpoints CRUD para Config (ajustado con timeout)
 app.get('/config', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
-    const config = await Config.findAll();
+    const config = await Config.findAll({ timeout: 5000 });
     return c.json(config);
   } catch (error) {
+    console.error('Error al obtener configuración:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al consultar configuración' }, 503);
+    }
     return c.json({ error: 'Error al obtener configuración' }, 500);
   }
 });
@@ -900,15 +994,19 @@ app.post('/config', async (c) => {
   const user = c.get('user');
   if (user?.role === 'viewer') return c.json({ error: 'Acceso denegado' }, 403);
   try {
-    const existingConfig = await Config.findOne();
+    const existingConfig = await Config.findOne({ timeout: 5000 });
     if (existingConfig) {
-      await existingConfig.update(await c.req.json());
+      await existingConfig.update(await c.req.json(), { timeout: 5000 });
       return c.json(existingConfig);
     } else {
-      const config = await Config.create(await c.req.json());
+      const config = await Config.create(await c.req.json(), { timeout: 5000 });
       return c.json(config, 201);
     }
   } catch (error) {
+    console.error('Error al crear/actualizar configuración:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al crear/actualizar configuración' }, 503);
+    }
     return c.json({ error: 'Error al crear/actualizar configuración' }, 500);
   }
 });
@@ -918,10 +1016,14 @@ app.get('/config/:id', async (c) => {
   if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
     const { id } = c.req.param();
-    const config = await Config.findByPk(id);
+    const config = await Config.findByPk(id, { timeout: 5000 });
     if (!config) return c.json({ error: 'Configuración no encontrada' }, 404);
     return c.json(config);
   } catch (error) {
+    console.error('Error al obtener configuración:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al consultar configuración' }, 503);
+    }
     return c.json({ error: 'Error al obtener configuración' }, 500);
   }
 });
@@ -931,11 +1033,15 @@ app.delete('/config/:id', async (c) => {
   if (user?.role === 'viewer') return c.json({ error: 'Acceso denegado' }, 403);
   try {
     const { id } = c.req.param();
-    const config = await Config.findByPk(id);
+    const config = await Config.findByPk(id, { timeout: 5000 });
     if (!config) return c.json({ error: 'Configuración no encontrada' }, 404);
-    await config.destroy();
+    await config.destroy({ timeout: 5000 });
     return c.status(204);
   } catch (error) {
+    console.error('Error al eliminar configuración:', error);
+    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
+      return c.json({ error: 'Tiempo de espera agotado al eliminar configuración' }, 503);
+    }
     return c.json({ error: 'Error al eliminar configuración' }, 500);
   }
 });
