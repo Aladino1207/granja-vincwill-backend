@@ -9,7 +9,7 @@ const app = new Hono();
 
 // Configuración de CORS
 app.use('*', cors({
-  origin: '*',
+  origin: ['https://granja-vincwill-frontend.vercel.app', 'http://localhost:3000'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   headers: ['Content-Type', 'Authorization'],
   credentials: true
@@ -23,11 +23,11 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialectOptions: {
     ssl: { require: true, rejectUnauthorized: false },
     keepAlive: true,
-    connectTimeout: 60000,
-    socketTimeout: 60000
+    connectTimeout: 120000, // 120 segundos
+    socketTimeout: 120000  // 120 segundos
   },
-  pool: { max: 5, min: 0, acquire: 30000, idle: 10000 },
-  retry: { match: [/SequelizeConnectionError/, /Connection terminated unexpectedly/], max: 3 },
+  pool: { max: 5, min: 0, acquire: 60000, idle: 20000 }, // 60 segundos para acquire
+  retry: { match: [/SequelizeConnectionError/, /Connection terminated unexpectedly/], max: 5 },
   define: {
     hooks: {
       // Deshabilitar soporte para hstore
