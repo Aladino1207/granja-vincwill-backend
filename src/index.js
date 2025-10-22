@@ -9,7 +9,7 @@ const app = new Hono();
 
 // Configuración de CORS
 app.use('*', cors({
-  origin: ['https://granja-vincwill-frontend.vercel.app', 'http://localhost:3000'],
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   headers: ['Content-Type', 'Authorization'],
   credentials: true
