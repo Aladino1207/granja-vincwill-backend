@@ -7,3 +7,10 @@ compatibility_flags = ["nodejs_compat"]
 DATABASE_URL = "postgresql://neondb_owner:npg_z3WSXD5dPTGm@ep-broad-sun-ac5euzsd-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 JWT_SECRET = "egY4f4-a810wD1i6D2V5kscW32223A6Knm6aGkyXu3tSc="
 PORT = "3000"
+
+[build]
+upload = { format = "modules" }
+[dev]
+ip = "0.0.0.0"
+port = 8787
+local_protocol = "http"
