@@ -15,27 +15,27 @@ app.use('*', cors({
   credentials: true
 }));
 
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
+const sequelize = new Sequelize(process.env.DATABASE_URL_US_EAST_1, {
   dialect: 'postgres',
   dialectModule: require('pg'),
-  logging: (msg) => console.log('SQL:', msg), // Depuración
+  logging: (msg) => console.log('SQL:', msg),
   dialectOptions: {
-    ssl: { require: true, rejectUnauthorized: true }, // Usa certificados válidos
+    ssl: { require: true, rejectUnauthorized: true },
     keepAlive: true,
-    connectTimeout: 30000, // 30 segundos
-    socketTimeout: 30000  // 30 segundos
+    connectTimeout: 30000,
+    socketTimeout: 30000
   },
   pool: {
-    max: 5, // Aumenta a 5 conexiones
+    max: 5,
     min: 0,
-    acquire: 30000, // 30 segundos
-    idle: 10000, // 10 segundos
-    evict: 10000 // 10 segundos
+    acquire: 30000,
+    idle: 10000,
+    evict: 10000
   },
   retry: {
     match: [/SequelizeConnectionError/, /Connection terminated unexpectedly/, /ETIMEDOUT/, /timeout/],
-    max: 3, // 3 reintentos
-    backoffBase: 2000, // 2 segundos iniciales
+    max: 3,
+    backoffBase: 2000,
     backoffExponent: 1.5
   },
   define: {
