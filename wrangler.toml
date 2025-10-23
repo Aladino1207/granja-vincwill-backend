@@ -4,6 +4,7 @@ compatibility_date = "2025-10-17"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
+DATABASE_URL = "postgresql://neondb_owner:npg_4tOa7fhIwDgK@ep-long-wave-ad726z9r-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require"
 JWT_SECRET = "egY4f4-a810wD1i6D2V5kscW32223A6Knm6aGkyXu3tSc="
 PORT = "3000"
 
