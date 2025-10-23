@@ -18,24 +18,24 @@ app.use('*', cors({
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
   dialectModule: require('pg'),
-  logging: (msg) => console.log('SQL:', msg), // Habilita logging temporal para depuración
+  logging: (msg) => console.log('SQL:', msg), // Depuración
   dialectOptions: {
-    ssl: { require: true, rejectUnauthorized: false },
+    ssl: { require: true, rejectUnauthorized: true }, // Usa certificados válidos
     keepAlive: true,
-    connectTimeout: 5000, // Reduce a 5 segundos para pruebas
-    socketTimeout: 5000  // Reduce a 5 segundos para pruebas
+    connectTimeout: 30000, // 30 segundos
+    socketTimeout: 30000  // 30 segundos
   },
   pool: {
-    max: 2, // Aumenta a 2 para manejar más solicitudes
+    max: 5, // Aumenta a 5 conexiones
     min: 0,
-    acquire: 5000, // Reduce a 5 segundos
-    idle: 3000, // Reduce a 3 segundos
-    evict: 5000 // Reduce a 5 segundos
+    acquire: 30000, // 30 segundos
+    idle: 10000, // 10 segundos
+    evict: 10000 // 10 segundos
   },
   retry: {
     match: [/SequelizeConnectionError/, /Connection terminated unexpectedly/, /ETIMEDOUT/, /timeout/],
-    max: 2, // Aumenta a 2 reintentos
-    backoffBase: 1000,
+    max: 3, // 3 reintentos
+    backoffBase: 2000, // 2 segundos iniciales
     backoffExponent: 1.5
   },
   define: {
@@ -136,7 +136,7 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 // Sincronizar base de datos (sin cambios)
 (async () => {
   let retryCount = 0;
-  const maxRetries = 3;
+  const maxRetries = 5; // Aumenta a 5 reintentos
   while (retryCount < maxRetries) {
     try {
       await sequelize.authenticate();
@@ -146,11 +146,12 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
       break;
     } catch (error) {
       retryCount++;
-      console.error(`Error al conectar (intento ${retryCount}/${maxRetries}):`, error);
-      if (retryCount >= maxRetries) {
-        console.error('Falló la conexión después de reintentos.');
+      console.error(`Intento ${retryCount}/${maxRetries}:`, error.message);
+      if (retryCount === maxRetries) {
+        console.error('Falló la conexión después de reintentos máximos.');
+        throw error; // Lanza el error para que el worker falle y se reinicie
       }
-      await new Promise(resolve => setTimeout(resolve, 5000 * retryCount));
+      await new Promise(resolve => setTimeout(resolve, 5000 * Math.pow(1.5, retryCount)));
     }
   }
 
@@ -221,20 +222,32 @@ app.get('/', (c) => c.json({
 
 // Endpoint de login (sin cambios)
 app.post('/login', async (c) => {
-  try {
-    const { email, password } = await c.req.json();
-    console.log('Intentando login con email:', email);
-    const user = await User.findOne({ where: { email } });
-    if (!user || !bcryptjs.compareSync(password, user.password)) {
-      console.log('Credenciales inválidas para email:', email);
-      return c.json({ error: 'Credenciales inválidas' }, 401);
+  const { email, password } = await c.req.json();
+  console.log('Intentando login con email:', email);
+  let retryCount = 0;
+  const maxRetries = 3;
+  while (retryCount < maxRetries) {
+    try {
+      const user = await User.findOne({ where: { email } });
+      if (!user || !bcryptjs.compareSync(password, user.password)) {
+        console.log('Credenciales inválidas para email:', email);
+        return c.json({ error: 'Credenciales inválidas' }, 401);
+      }
+      const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+      console.log('Login exitoso para usuario:', email);
+      return c.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    } catch (error) {
+      retryCount++;
+      console.error(`Intento ${retryCount}/${maxRetries} de login:`, error.message);
+      if (retryCount === maxRetries) {
+        return c.json({ error: 'Tiempo de espera agotado al autenticar' }, 503);
+      }
+      if (error.name === 'SequelizeConnectionAcquireTimeoutError') {
+        await new Promise(resolve => setTimeout(resolve, 5000 * retryCount));
+      } else {
+        return c.json({ error: 'Error en el servidor: ' + error.message }, 500);
+      }
     }
-    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    console.log('Login exitoso para usuario:', email);
-    return c.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
-  } catch (error) {
-    console.error('Error detallado de login:', error.message);
-    return c.json({ error: 'Error en el servidor', detalle: error.message }, 500);
   }
 });
 
