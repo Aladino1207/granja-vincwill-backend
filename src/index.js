@@ -141,20 +141,20 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
     try {
       await sequelize.authenticate();
       console.log('Conexión a la base de datos establecida');
-      await sequelize.sync({ force: true }); // Usa { force: true } para crear tablas (cuidado en producción)
+      await sequelize.sync({ force: true }); // Recrea las tablas (usa { alter: true } en producción)
       console.log('Base de datos sincronizada con PostgreSQL');
       break;
     } catch (error) {
       retryCount++;
-      console.error(`Intento ${retryCount}/${maxRetries}:`, error.message);
+      console.error(`Intento ${retryCount}/${maxRetries} de sincronización:`, error.message);
       if (retryCount === maxRetries) {
-        console.error('Falló la conexión después de reintentos máximos.');
-        throw error; // Esto hará que el Worker falle y se reinicie
+        console.error('Falló la sincronización después de reintentos máximos.');
+        throw error; // Hace que el Worker falle y se reinicie
       }
-      await new Promise(resolve => setTimeout(resolve, 10000 * Math.pow(1.5, retryCount))); // Aumenta el delay a 10s
+      await new Promise(resolve => setTimeout(resolve, 10000 * Math.pow(1.5, retryCount))); // Delay de 10s
     }
   }
-
+  // Lógica de creación de usuario y config
   try {
     const user = await User.findOne({ where: { email: 'admin@example.com' } });
     if (!user) {

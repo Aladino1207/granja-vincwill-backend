@@ -4,7 +4,6 @@ compatibility_date = "2025-10-17"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-
 JWT_SECRET = "egY4f4-a810wD1i6D2V5kscW32223A6Knm6aGkyXu3tSc="
 PORT = "3000"
 
