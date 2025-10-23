@@ -22,13 +22,13 @@ const sequelize = new Sequelize(process.env.DATABASE_URL_US_EAST_1, {
   dialectOptions: {
     ssl: { require: true, rejectUnauthorized: true },
     keepAlive: true,
-    connectTimeout: 30000,
-    socketTimeout: 30000
+    connectTimeout: 60000, // 60 segundos
+    socketTimeout: 60000  // 60 segundos
   },
   pool: {
     max: 5,
     min: 0,
-    acquire: 30000,
+    acquire: 60000, // 60 segundos
     idle: 10000,
     evict: 10000
   },
@@ -141,7 +141,7 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
     try {
       await sequelize.authenticate();
       console.log('Conexión a la base de datos establecida');
-      await sequelize.sync({ force: true }); // Usa { force: true } para recrear tablas (cuidado en producción)
+      await sequelize.sync({ force: true }); // Usa { force: true } para crear tablas (cuidado en producción)
       console.log('Base de datos sincronizada con PostgreSQL');
       break;
     } catch (error) {
@@ -149,9 +149,9 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
       console.error(`Intento ${retryCount}/${maxRetries}:`, error.message);
       if (retryCount === maxRetries) {
         console.error('Falló la conexión después de reintentos máximos.');
-        throw error;
+        throw error; // Esto hará que el Worker falle y se reinicie
       }
-      await new Promise(resolve => setTimeout(resolve, 5000 * Math.pow(1.5, retryCount)));
+      await new Promise(resolve => setTimeout(resolve, 10000 * Math.pow(1.5, retryCount))); // Aumenta el delay a 10s
     }
   }
 
