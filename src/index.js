@@ -136,12 +136,12 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 // Sincronizar base de datos (sin cambios)
 (async () => {
   let retryCount = 0;
-  const maxRetries = 5; // Aumenta a 5 reintentos
+  const maxRetries = 5;
   while (retryCount < maxRetries) {
     try {
       await sequelize.authenticate();
       console.log('Conexión a la base de datos establecida');
-      await sequelize.sync({ alter: true });
+      await sequelize.sync({ force: true }); // Usa { force: true } para recrear tablas (cuidado en producción)
       console.log('Base de datos sincronizada con PostgreSQL');
       break;
     } catch (error) {
@@ -149,7 +149,7 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
       console.error(`Intento ${retryCount}/${maxRetries}:`, error.message);
       if (retryCount === maxRetries) {
         console.error('Falló la conexión después de reintentos máximos.');
-        throw error; // Lanza el error para que el worker falle y se reinicie
+        throw error;
       }
       await new Promise(resolve => setTimeout(resolve, 5000 * Math.pow(1.5, retryCount)));
     }
