@@ -133,6 +133,12 @@ Costo.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Venta, { foreignKey: 'loteId' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
+
+addEventListener('fetch', (event) => {
+  console.log('Solicitud recibida:', event.request.url);
+  event.respondWith(handleRequest(event.request));
+});
+
 // Sincronizar base de datos (sin cambios)
 (async () => {
   let retryCount = 0;
