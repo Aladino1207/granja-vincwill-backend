@@ -1,5 +1,3 @@
-import { Sequelize } from 'sequelize';
-
 require('dotenv').config();
 const { Hono } = require('hono');
 const { cors } = require('hono/cors');
@@ -141,6 +139,56 @@ addEventListener('fetch', (event) => {
   event.respondWith(handleRequest(event.request));
 });
 
+async function handleRequest(request) {
+  const url = new URL(request.url);
+  console.log('Solicitud recibida:', url.pathname);
+
+  if (request.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+    });
+  }
+
+  if (request.method === 'POST' && url.pathname === '/login') {
+    try {
+      await sequelize.authenticate();
+      console.log('Conexión a la base de datos exitosa');
+      const body = await request.json();
+      const { email, password } = body;
+
+      const user = await User.findOne({ where: { email } });
+      if (!user || !bcryptjs.compareSync(password, user.password)) {
+        return new Response(JSON.stringify({ error: 'Credenciales inválidas' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+
+      const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+      return new Response(JSON.stringify({ token, user: { id: user.id, email: user.email, role: user.role } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    } catch (error) {
+      console.error('Error en login:', error);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+  }
+
+  return new Response('Método no permitido', {
+    status: 405,
+    headers: { 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
 // Sincronizar base de datos (sin cambios)
 (async () => {
   let retryCount = 0;
@@ -149,7 +197,7 @@ addEventListener('fetch', (event) => {
     try {
       await sequelize.authenticate();
       console.log('Conexión a la base de datos establecida');
-      await sequelize.sync({ force: true }); // Recrea tablas
+      await sequelize.sync({ force: true });
       console.log('Base de datos sincronizada');
       break;
     } catch (error) {
