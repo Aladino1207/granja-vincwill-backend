@@ -15,7 +15,7 @@ app.use('*', cors({
   credentials: true
 }));
 
-const sequelize = new Sequelize(process.env.DATABASE_URL_US_EAST_1, {
+const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
   dialectModule: require('pg'),
   logging: (msg) => console.log('SQL:', msg),
