@@ -1,3 +1,5 @@
+import { Sequelize } from 'sequelize';
+
 require('dotenv').config();
 const { Hono } = require('hono');
 const { cors } = require('hono/cors');
