@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { Hono } = require('hono');
 const { cors } = require('hono/cors');
-const { Sequelize, DataTypes, Transaction } = require('sequelize');
+const { Sequelize, DataTypes } = require('sequelize');
 const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
@@ -22,13 +22,13 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialectOptions: {
     ssl: { require: true, rejectUnauthorized: true },
     keepAlive: true,
-    connectTimeout: 60000, // 60 segundos
-    socketTimeout: 60000  // 60 segundos
+    connectTimeout: 60000,
+    socketTimeout: 60000
   },
   pool: {
     max: 5,
     min: 0,
-    acquire: 60000, // 60 segundos
+    acquire: 60000,
     idle: 10000,
     evict: 10000
   },
@@ -268,43 +268,29 @@ app.use('*', async (c, next) => {
   }
 });
 
-// Ruta raíz (sin cambios)
+// Ruta raíz
 app.get('/', (c) => c.json({ 
   message: '¡Bienvenido a la API de Granja Avícola VincWill! Usa /login para autenticarte.' 
 }));
 
-// Endpoint de login (sin cambios)
+// Endpoint de login 
 app.post('/login', async (c) => {
+  try {
+    await sequelize.authenticate();
+    console.log('Conexión a la base de datos exitosa');
+    const body = await c.req.json();
+    const { email, password } = body;
 
-  if (request.method === 'POST' && request.url.endsWith('/login')) {
-    console.log('Procesando login para:', new URL(request.url).searchParams.get('email'));
-    const { email, password } = await c.req.json();
-    console.log('Intentando login con email:', email);
-    let retryCount = 0;
-    const maxRetries = 3;
-    while (retryCount < maxRetries) {
-      try {
-        const user = await User.findOne({ where: { email } });
-        if (!user || !bcryptjs.compareSync(password, user.password)) {
-          console.log('Credenciales inválidas para email:', email);
-          return c.json({ error: 'Credenciales inválidas' }, 401);
-        }
-        const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-        console.log('Login exitoso para usuario:', email);
-        return c.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
-      } catch (error) {
-        retryCount++;
-        console.error(`Intento ${retryCount}/${maxRetries} de login:`, error.message);
-        if (retryCount === maxRetries) {
-          return c.json({ error: 'Tiempo de espera agotado al autenticar' }, 503);
-        }
-        if (error.name === 'SequelizeConnectionAcquireTimeoutError') {
-          await new Promise(resolve => setTimeout(resolve, 5000 * retryCount));
-        } else {
-          return c.json({ error: 'Error en el servidor: ' + error.message }, 500);
-        }
-      }
+    const user = await User.findOne({ where: { email } });
+    if (!user || !bcryptjs.compareSync(password, user.password)) {
+      return c.json({ error: 'Credenciales inválidas' }, 401);
     }
+
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    return c.json({ token, user: { id: user.id, email: user.email, role: user.role } }, 200);
+  } catch (error) {
+    console.error('Error en login:', error);
+    return c.json({ error: error.message }, 500);
   }
 });
 
