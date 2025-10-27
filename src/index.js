@@ -58,7 +58,7 @@ const User = sequelize.define('User', {
   email: { type: DataTypes.STRING, unique: true, allowNull: false },
   password: { type: DataTypes.STRING, allowNull: false },
   role: { type: DataTypes.STRING, allowNull: false }
-});
+}, { tableName: 'Users' });
 
 const Lote = sequelize.define('Lote', {
   loteId: { type: DataTypes.STRING, unique: true, allowNull: false },
@@ -66,7 +66,7 @@ const Lote = sequelize.define('Lote', {
   pesoInicial: { type: DataTypes.FLOAT, allowNull: false },
   fechaIngreso: { type: DataTypes.DATE, allowNull: false },
   estado: { type: DataTypes.STRING, allowNull: false, defaultValue: 'disponible' }
-}, { timestamps: true });
+}, { tableName: 'Lotes', timestamps: true });
 
 const Seguimiento = sequelize.define('Seguimiento', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -76,7 +76,7 @@ const Seguimiento = sequelize.define('Seguimiento', {
   consumo: { type: DataTypes.FLOAT, allowNull: false },
   observaciones: { type: DataTypes.TEXT },
   fecha: { type: DataTypes.DATE }
-});
+}, { tableName: 'Seguimientos' });
 
 const Salud = sequelize.define('Salud', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -85,7 +85,7 @@ const Salud = sequelize.define('Salud', {
   nombre: { type: DataTypes.STRING, allowNull: false },
   cantidad: { type: DataTypes.INTEGER, allowNull: false },
   fecha: { type: DataTypes.DATE, allowNull: false }
-});
+}, { tableName: 'Saluds' });
 
 const Costo = sequelize.define('Costo', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -104,7 +104,7 @@ const Venta = sequelize.define('Venta', {
   precio: { type: DataTypes.FLOAT, allowNull: false },
   fecha: { type: DataTypes.DATE, allowNull: false },
   cliente: { type: DataTypes.STRING, allowNull: true }
-});
+}, { tableName: 'Ventas' });
 
 const Inventario = sequelize.define('Inventario', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -113,7 +113,7 @@ const Inventario = sequelize.define('Inventario', {
   cantidad: { type: DataTypes.FLOAT, allowNull: false },
   costo: { type: DataTypes.FLOAT, allowNull: false },
   fecha: { type: DataTypes.DATE, allowNull: false }
-});
+}, { tableName: 'Inventarios' });
 
 const Config = sequelize.define('Config', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -121,9 +121,9 @@ const Config = sequelize.define('Config', {
   idioma: { type: DataTypes.STRING, allowNull: false },
   nombreGranja: { type: DataTypes.STRING, allowNull: false },
   vacunasGallinas: { type: DataTypes.TEXT }
-});
+}, { tableName: 'Configs' });
 
-// Definir relaciones (sin cambios)
+// Relaciones
 Lote.hasMany(Seguimiento, { foreignKey: 'loteId' });
 Seguimiento.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Salud, { foreignKey: 'loteId' });
