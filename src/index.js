@@ -26,15 +26,15 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
     socketTimeout: 60000
   },
   pool: {
-    max: 5,
+    max: 10, // Aumenta de 5 a 10 conexiones
     min: 0,
-    acquire: 60000,
+    acquire: 120000, // Aumenta de 60000 a 120000 ms (2 minutos)
     idle: 10000,
     evict: 10000
   },
   retry: {
     match: [/SequelizeConnectionError/, /Connection terminated unexpectedly/, /ETIMEDOUT/, /timeout/],
-    max: 3,
+    max: 5, // Aumenta de 3 a 5 reintentos
     backoffBase: 2000,
     backoffExponent: 1.5
   },
