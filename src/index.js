@@ -26,15 +26,15 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
     socketTimeout: 60000
   },
   pool: {
-    max: 10, // Aumenta de 5 a 10 conexiones
+    max: 5, // Reduce a 5 para coincidir con el límite típico de Neon gratuito
     min: 0,
-    acquire: 120000, // Aumenta de 60000 a 120000 ms (2 minutos)
+    acquire: 90000, // Reduce a 90 segundos para pruebas
     idle: 10000,
     evict: 10000
   },
   retry: {
     match: [/SequelizeConnectionError/, /Connection terminated unexpectedly/, /ETIMEDOUT/, /timeout/],
-    max: 5, // Aumenta de 3 a 5 reintentos
+    max: 5,
     backoffBase: 2000,
     backoffExponent: 1.5
   },
@@ -193,8 +193,12 @@ async function handleRequest(request) {
 (async () => {
   try {
     await sequelize.authenticate();
-    console.log('Conexión a la base de datos establecida');
-    // await sequelize.sync({ force: true }); // Comentado para evitar recrear tablas
+    console.log('Conexión a la base de datos establecida con éxito');
+    console.log('Estado del pool de conexiones:', {
+      active: sequelize.connectionManager.pool._allConnections.length,
+      total: sequelize.connectionManager.pool._allConnections.length,
+      pending: sequelize.connectionManager.pool._pendingAcquires.length
+    });
     console.log('Base de datos lista');
   } catch (error) {
     console.error('Error en conexión:', error);
