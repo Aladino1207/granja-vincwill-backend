@@ -189,23 +189,15 @@ async function handleRequest(request) {
   });
 }
 
-// Sincronizar base de datos (sin cambios)
+// Sincronizar base de datos
 (async () => {
-  let retryCount = 0;
-  const maxRetries = 10;
-  while (retryCount < maxRetries) {
-    try {
-      await sequelize.authenticate();
-      console.log('Conexión a la base de datos establecida');
-      await sequelize.sync({ force: true });
-      console.log('Base de datos sincronizada');
-      break;
-    } catch (error) {
-      retryCount++;
-      console.log(`Intento ${retryCount}/${maxRetries}:`, error.message);
-      if (retryCount === maxRetries) throw error;
-      await new Promise(resolve => setTimeout(resolve, 15000));
-    }
+  try {
+    await sequelize.authenticate();
+    console.log('Conexión a la base de datos establecida');
+    // await sequelize.sync({ force: true }); // Comentado para evitar recrear tablas
+    console.log('Base de datos lista');
+  } catch (error) {
+    console.error('Error en conexión:', error);
   }
   // Lógica de creación de usuario y config
   try {
@@ -447,17 +439,14 @@ app.put('/users/:id', async (c) => {
 
 // Endpoints CRUD para Lote (ajustado con timeout)
 app.get('/lotes', async (c) => {
-  const user = c.get('user');
-  if (!user) return c.json({ error: 'No autorizado' }, 403);
   try {
-    const lotes = await Lote.findAll({ timeout: 5000 });
-    return c.json(lotes);
+    const lotes = await Lote.findAll({
+      include: [Seguimiento, Salud, Costo, Venta]
+    });
+    return c.json(lotes, 200);
   } catch (error) {
     console.error('Error al obtener lotes:', error);
-    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
-      return c.json({ error: 'Tiempo de espera agotado al consultar lotes' }, 503);
-    }
-    return c.json({ error: 'Error al obtener lotes' }, 500);
+    return c.json({ error: error.message }, 500);
   }
 });
 
