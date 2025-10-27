@@ -440,9 +440,12 @@ app.put('/users/:id', async (c) => {
 // Endpoints CRUD para Lote (ajustado con timeout)
 app.get('/lotes', async (c) => {
   try {
+    console.log('Consultando lotes...'); // Depuración
+    // Simplifica la consulta sin incluir relaciones inicialmente
     const lotes = await Lote.findAll({
-      include: [Seguimiento, Salud, Costo, Venta]
+      attributes: ['id', 'loteId', 'cantidad', 'pesoInicial', 'fechaIngreso', 'estado', 'createdAt', 'updatedAt']
     });
+    console.log('Lotes encontrados:', lotes); // Depuración
     return c.json(lotes, 200);
   } catch (error) {
     console.error('Error al obtener lotes:', error);
