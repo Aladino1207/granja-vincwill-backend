@@ -4,6 +4,7 @@ import { cors } from 'hono/cors';
 import { Sequelize, DataTypes } from 'sequelize';
 import bcryptjs from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import pg from 'pg';  // ← IMPORT ESTÁTICO
 
 const app = new Hono();
 
@@ -15,27 +16,18 @@ app.use('*', cors({
   credentials: true
 }));
 
+// SEQUELIZE
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  dialectModule: await import('pg'),
+  dialectModule: pg,
   logging: (msg) => console.log('SQL:', msg),
   dialectOptions: {
-    ssl: { require: true, rejectUnauthorized: false }, // Neon requiere ssl
+    ssl: { require: true, rejectUnauthorized: false },
     keepAlive: true
   },
-  pool: {
-    max: 3,           // Neon gratuito: máximo 3-5 conexiones
-    min: 0,
-    acquire: 30000,   // 30 segundos
-    idle: 10000,
-    evict: 1000       // Libera conexiones inactivas rápido
-  },
-  retry: {
-    max: 3
-  },
-  define: {
-    timestamps: true
-  }
+  pool: { max: 3, min: 0, acquire: 30000, idle: 10000, evict: 1000 },
+  retry: { max: 3 },
+  define: { timestamps: true }
 });
 
 // Definir modelos (sin cambios)
