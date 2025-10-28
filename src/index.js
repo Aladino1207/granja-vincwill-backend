@@ -20,34 +20,20 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialectModule: require('pg'),
   logging: (msg) => console.log('SQL:', msg),
   dialectOptions: {
-    ssl: { require: true, rejectUnauthorized: true },
-    keepAlive: true,
-    connectTimeout: 60000,
-    socketTimeout: 60000
+    ssl: { require: true, rejectUnauthorized: false }, // Neon requiere ssl
+    keepAlive: true
   },
   pool: {
-    max: 5, // Reduce a 5 para coincidir con el límite típico de Neon gratuito
+    max: 3,           // Neon gratuito: máximo 3-5 conexiones
     min: 0,
-    acquire: 90000, // Reduce a 90 segundos para pruebas
+    acquire: 30000,   // 30 segundos
     idle: 10000,
-    evict: 10000
+    evict: 1000       // Libera conexiones inactivas rápido
   },
   retry: {
-    match: [/SequelizeConnectionError/, /Connection terminated unexpectedly/, /ETIMEDOUT/, /timeout/],
-    max: 5,
-    backoffBase: 2000,
-    backoffExponent: 1.5
+    max: 3
   },
   define: {
-    hooks: {
-      beforeDefine: (attributes) => {
-        Object.keys(attributes).forEach((key) => {
-          if (attributes[key].type === DataTypes.HSTORE) {
-            throw new Error('HSTORE is not supported in this configuration');
-          }
-        });
-      }
-    },
     timestamps: true
   }
 });
@@ -134,60 +120,6 @@ Lote.hasMany(Venta, { foreignKey: 'loteId' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
 
-addEventListener('fetch', (event) => {
-  console.log('Solicitud recibida:', event.request.url);
-  event.respondWith(handleRequest(event.request));
-});
-
-async function handleRequest(request) {
-  const url = new URL(request.url);
-  console.log('Solicitud recibida:', url.pathname);
-
-  if (request.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-    });
-  }
-
-  if (request.method === 'POST' && url.pathname === '/login') {
-    try {
-      await sequelize.authenticate();
-      console.log('Conexión a la base de datos exitosa');
-      const body = await request.json();
-      const { email, password } = body;
-
-      const user = await User.findOne({ where: { email } });
-      if (!user || !bcryptjs.compareSync(password, user.password)) {
-        return new Response(JSON.stringify({ error: 'Credenciales inválidas' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        });
-      }
-
-      const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-      return new Response(JSON.stringify({ token, user: { id: user.id, email: user.email, role: user.role } }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      });
-    } catch (error) {
-      console.error('Error en login:', error);
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      });
-    }
-  }
-
-  return new Response('Método no permitido', {
-    status: 405,
-    headers: { 'Access-Control-Allow-Origin': '*' },
-  });
-}
 
 // Sincronizar base de datos
 (async () => {
@@ -442,18 +374,27 @@ app.put('/users/:id', async (c) => {
 });
 
 // Endpoints CRUD para Lote (ajustado con timeout)
+// Ruta para obtener lotes (con timeout para evitar hangs)
 app.get('/lotes', async (c) => {
   try {
-    console.log('Consultando lotes...'); // Depuración
-    // Simplifica la consulta sin incluir relaciones inicialmente
-    const lotes = await Lote.findAll({
+    console.log('Consultando lotes...');
+
+    // Timeout manual: si tarda más de 10 segundos, falla
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Timeout: consulta demasiado lenta')), 10000)
+    );
+
+    const query = Lote.findAll({
       attributes: ['id', 'loteId', 'cantidad', 'pesoInicial', 'fechaIngreso', 'estado', 'createdAt', 'updatedAt']
     });
-    console.log('Lotes encontrados:', lotes); // Depuración
+
+    const lotes = await Promise.race([query, timeout]);
+
+    console.log('Lotes encontrados:', lotes.length);
     return c.json(lotes, 200);
   } catch (error) {
-    console.error('Error al obtener lotes:', error);
-    return c.json({ error: error.message }, 500);
+    console.error('Error controlado en /lotes:', error.message);
+    return c.json({ error: 'Error al cargar lotes: ' + error.message }, 500);
   }
 });
 
@@ -1098,4 +1039,16 @@ app.delete('/config/:id', async (c) => {
   }
 });
 
-export default app; 
+// Ruta estándar (para monitoreo automático)
+app.get('/health', (c) => {
+  return c.json({ 
+    status: 'ok', 
+    time: new Date().toISOString(),
+    message: 'Backend activo'
+  });
+});
+
+module.exports = {
+  fetch: app.fetch
+};
+
