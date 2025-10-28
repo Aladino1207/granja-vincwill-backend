@@ -17,7 +17,7 @@ app.use('*', cors({
 
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  dialectModule: require('pg'),
+  dialectModule: await import('pg'),
   logging: (msg) => console.log('SQL:', msg),
   dialectOptions: {
     ssl: { require: true, rejectUnauthorized: false }, // Neon requiere ssl
