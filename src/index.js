@@ -1,9 +1,9 @@
-require('dotenv').config();
-const { Hono } = require('hono');
-const { cors } = require('hono/cors');
-const { Sequelize, DataTypes } = require('sequelize');
-const bcryptjs = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+import 'dotenv/config';
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { Sequelize, DataTypes } from 'sequelize';
+import bcryptjs from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 const app = new Hono();
 
@@ -1048,7 +1048,7 @@ app.get('/health', (c) => {
   });
 });
 
-module.exports = {
+export default {
   fetch: app.fetch
 };
 
