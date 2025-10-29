@@ -371,16 +371,9 @@ app.get('/lotes', async (c) => {
   try {
     console.log('Consultando lotes...');
 
-    // Timeout manual: si tarda más de 10 segundos, falla
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Timeout: consulta demasiado lenta')), 10000)
-    );
-
-    const query = Lote.findAll({
+    const lotes = await Lote.findAll({
       attributes: ['id', 'loteId', 'cantidad', 'pesoInicial', 'fechaIngreso', 'estado', 'createdAt', 'updatedAt']
     });
-
-    const lotes = await Promise.race([query, timeout]);
 
     console.log('Lotes encontrados:', lotes.length);
     return c.json(lotes, 200);
