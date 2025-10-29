@@ -11,22 +11,29 @@ const app = new Hono();
 // Configuración de CORS
 app.use('*', cors({
   origin: ['https://granja-vincwill-frontend.vercel.app', 'http://localhost:3000'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  headers: ['Content-Type', 'Authorization'],
-  credentials: true
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  maxAge: 600
 }));
 
 // SEQUELIZE
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
   dialectModule: pg,
-  logging: (msg) => console.log('SQL:', msg),
+  logging: false, // ← QUITA console.log para no saturar
   dialectOptions: {
     ssl: { require: true, rejectUnauthorized: false },
     keepAlive: true
   },
-  pool: { max: 3, min: 0, acquire: 30000, idle: 10000, evict: 1000 },
-  retry: { max: 3 },
+  pool: {
+    max: 2,           // ← MÁXIMO 2 CONEXIONES (Neon gratuito)
+    min: 0,
+    acquire: 10000,   // 10 segundos
+    idle: 5000,       // 5 segundos
+    evict: 1000       // Libera rápido
+  },
+  retry: { max: 2 },
   define: { timestamps: true }
 });
 
@@ -371,15 +378,27 @@ app.get('/lotes', async (c) => {
   try {
     console.log('Consultando lotes...');
 
+    // Forzar timeout más corto para no colgar el Worker
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000); // 8 segundos máx
+
     const lotes = await Lote.findAll({
-      attributes: ['id', 'loteId', 'cantidad', 'pesoInicial', 'fechaIngreso', 'estado', 'createdAt', 'updatedAt']
+      attributes: ['id', 'loteId', 'cantidad', 'pesoInicial', 'fechaIngreso', 'estado'],
+      order: [['fechaIngreso', 'DESC']],
+      limit: 50, // ← Evita traer miles de registros
+      signal: controller.signal
     });
 
+    clearTimeout(timeout);
     console.log('Lotes encontrados:', lotes.length);
     return c.json(lotes, 200);
   } catch (error) {
-    console.error('Error controlado en /lotes:', error.message);
-    return c.json({ error: 'Error al cargar lotes: ' + error.message }, 500);
+    if (error.name === 'AbortError') {
+      console.error('Timeout en consulta de lotes');
+      return c.json({ error: 'Consulta demasiado lenta. Intenta de nuevo.' }, 504);
+    }
+    console.error('Error en /lotes:', error.message);
+    return c.json({ error: 'Error interno del servidor' }, 500);
   }
 });
 
