@@ -27,11 +27,10 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
     keepAlive: true
   },
   pool: {
-    max: 2,           // ← MÁXIMO 2 CONEXIONES (Neon gratuito)
-    min: 0,
-    acquire: 10000,   // 10 segundos
-    idle: 5000,       // 5 segundos
-    evict: 1000       // Libera rápido
+  max: 3,
+  acquire: 20000, // 20 segundos
+  idle: 5000,
+  evict: 1000
   },
   retry: { max: 2 },
   define: { timestamps: true }
