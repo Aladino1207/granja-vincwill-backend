@@ -27,8 +27,9 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
     keepAlive: true
   },
   pool: {
-  max: 3,
-  acquire: 20000, // 20 segundos
+  max: 1,
+  min: 0,
+  acquire: 20000,
   idle: 5000,
   evict: 1000
   },
