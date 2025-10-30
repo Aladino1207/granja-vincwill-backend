@@ -19,22 +19,13 @@ app.use('*', cors({
 
 // SEQUELIZE
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
-  dialect: 'postgres',
-  dialectModule: pg,
-  logging: false, // ← QUITA console.log para no saturar
-  dialectOptions: {
-    ssl: { require: true, rejectUnauthorized: false },
-    keepAlive: true
-  },
-  pool: {
-  max: 1,
-  min: 0,
-  acquire: 20000,
-  idle: 5000,
-  evict: 1000
-  },
-  retry: { max: 2 },
-  define: { timestamps: true }
+  const { Pool } = require('pg');
+  const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: 1,           // ← 1 conexión
+  idleTimeoutMillis: 5000,  // ← cierra rápido
+  connectionTimeoutMillis: 10000})
 });
 
 // Definir modelos (sin cambios)
@@ -375,30 +366,16 @@ app.put('/users/:id', async (c) => {
 // Endpoints CRUD para Lote (ajustado con timeout)
 // Ruta para obtener lotes (con timeout para evitar hangs)
 app.get('/lotes', async (c) => {
+  const client = await pool.connect();
   try {
     console.log('Consultando lotes...');
-
-    // Forzar timeout más corto para no colgar el Worker
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000); // 8 segundos máx
-
-    const lotes = await Lote.findAll({
-      attributes: ['id', 'loteId', 'cantidad', 'pesoInicial', 'fechaIngreso', 'estado'],
-      order: [['fechaIngreso', 'DESC']],
-      limit: 50, // ← Evita traer miles de registros
-      signal: controller.signal
-    });
-
-    clearTimeout(timeout);
-    console.log('Lotes encontrados:', lotes.length);
-    return c.json(lotes, 200);
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      console.error('Timeout en consulta de lotes');
-      return c.json({ error: 'Consulta demasiado lenta. Intenta de nuevo.' }, 504);
-    }
-    console.error('Error en /lotes:', error.message);
-    return c.json({ error: 'Error interno del servidor' }, 500);
+    const res = await client.query('SELECT id, "loteId", cantidad, "pesoInicial", "fechaIngreso", estado FROM "Lotes" LIMIT 50');
+    return c.json(res.rows);
+  } catch (err) {
+    console.error('Error:', err.message);
+    return c.json({ error: 'Error al cargar lotes' }, 500);
+  } finally {
+    client.release(); // ← LIBERA SIEMPRE
   }
 });
 
@@ -728,17 +705,14 @@ app.post('/costos', async (c) => {
 
 // Endpoints CRUD para Ventas (ajustado con timeout)
 app.get('/ventas', async (c) => {
-  const user = c.get('user');
-  if (!user) return c.json({ error: 'No autorizado' }, 403);
+  const client = await pool.connect();
   try {
-    const ventas = await Venta.findAll({ timeout: 5000 });
-    return c.json(ventas);
-  } catch (error) {
-    console.error('Error al obtener ventas:', error);
-    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
-      return c.json({ error: 'Tiempo de espera agotado al consultar ventas' }, 503);
-    }
+    const res = await client.query('SELECT * FROM "Ventas" LIMIT 50');
+    return c.json(res.rows);
+  } catch (err) {
     return c.json({ error: 'Error al obtener ventas' }, 500);
+  } finally {
+    client.release();
   }
 });
 
