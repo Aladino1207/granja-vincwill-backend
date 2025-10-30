@@ -25,6 +25,21 @@ const pool = new Pool({
   connectionTimeoutMillis: 10000
 });
 
+const sequelize = new Sequelize(process.env.DATABASE_URL, {
+  dialect: 'postgres',
+  dialectModule: require('pg'),
+  logging: false,
+  dialectOptions: {
+    ssl: { require: true, rejectUnauthorized: false }
+  },
+  pool: {
+    max: 1,
+    min: 0,
+    acquire: 20000,
+    idle: 5000
+  }
+});
+
 // Definir modelos (sin cambios)
 const User = sequelize.define('User', {
   name: { type: DataTypes.STRING, allowNull: false },
