@@ -1,14 +1,13 @@
 import 'dotenv/config';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { Sequelize, DataTypes } from 'sequelize';
+import { Pool } from 'pg';
 import bcryptjs from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import pg from 'pg';  // ← IMPORT ESTÁTICO
 
 const app = new Hono();
 
-// Configuración de CORS
+// CORS
 app.use('*', cors({
   origin: ['https://granja-vincwill-frontend.vercel.app', 'http://localhost:3000'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -17,15 +16,13 @@ app.use('*', cors({
   maxAge: 600
 }));
 
-// SEQUELIZE
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
-  const { Pool } = require('pg');
-  const pool = new Pool({
+// POOL DIRECTO CON pg
+const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  max: 1,           // ← 1 conexión
-  idleTimeoutMillis: 5000,  // ← cierra rápido
-  connectionTimeoutMillis: 10000})
+  max: 1,
+  idleTimeoutMillis: 5000,
+  connectionTimeoutMillis: 10000
 });
 
 // Definir modelos (sin cambios)
@@ -115,73 +112,50 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 (async () => {
   try {
     await sequelize.authenticate();
-    console.log('Conexión a la base de datos establecida con éxito');
-    console.log('Estado del pool de conexiones:', {
-      active: sequelize.connectionManager.pool._allConnections.length,
-      total: sequelize.connectionManager.pool._allConnections.length,
-      pending: sequelize.connectionManager.pool._pendingAcquires.length
-    });
-    console.log('Base de datos lista');
-  } catch (error) {
-    console.error('Error en conexión:', error);
-  }
-  // Lógica de creación de usuario y config
-  try {
-    const user = await User.findOne({ where: { email: 'admin@example.com' } });
-    if (!user) {
-      const hashedPassword = bcryptjs.hashSync('admin123', 10);
-      await User.create({
+    console.log('Conexión exitosa con Sequelize');
+    
+    // Crear usuario admin
+    const [user] = await User.findOrCreate({
+      where: { email: 'admin@example.com' },
+      defaults: {
         name: 'Admin',
         email: 'admin@example.com',
-        password: hashedPassword,
+        password: bcryptjs.hashSync('admin123', 10),
         role: 'admin'
-      });
-      console.log('Usuario admin creado');
-    } else {
-      console.log('Usuario admin encontrado, forzando actualización de rol...');
-      await user.update({
-        role: 'admin',
-        password: bcryptjs.hashSync('admin123', 10)
-      });
-      console.log('Usuario admin actualizado');
+      }
+    });
+    if (user.role !== 'admin') {
+      await user.update({ role: 'admin', password: bcryptjs.hashSync('admin123', 10) });
     }
-    const config = await Config.findOne();
-    if (!config) {
-      await Config.create({
+
+    // Config inicial
+    await Config.findOrCreate({
+      where: { id: 1 },
+      defaults: {
         notificaciones: 'Activadas',
         idioma: 'Español',
         nombreGranja: 'Granja Avícola VincWill',
         vacunasGallinas: ''
-      });
-      console.log('Configuración inicial creada');
-    }
-  } catch (error) {
-    console.error('Error al crear datos iniciales:', error);
+      }
+    });
+  } catch (err) {
+    console.error('Error en inicialización:', err);
   }
 })();
 
 // Middleware de autenticación (ajustado para manejar timeouts)
 app.use('*', async (c, next) => {
-  if (c.req.path === '/' || c.req.path === '/login') {
-    await next();
-    return;
-  }
+  const publicPaths = ['/', '/login', '/health'];
+  if (publicPaths.includes(c.req.path)) return next();
 
   const token = c.req.header('Authorization')?.split(' ')[1];
-  console.log('Token recibido:', token);
-  if (!token) {
-    return c.json({ error: 'Token requerido' }, 401);
-  }
+  if (!token) return c.json({ error: 'Token requerido' }, 401);
+
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 10, timeout: 5000 });
-    console.log('Token decodificado:', decoded);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     c.set('user', decoded);
-    await next();
-  } catch (error) {
-    console.error('Error al verificar token:', error.message);
-    if (error.name === 'TokenExpiredError' || error.message.includes('timeout')) {
-      return c.json({ error: 'Token expirado o tiempo de espera agotado' }, 401);
-    }
+    return next();
+  } catch {
     return c.json({ error: 'Token inválido' }, 401);
   }
 });
@@ -194,21 +168,15 @@ app.get('/', (c) => c.json({
 // Endpoint de login 
 app.post('/login', async (c) => {
   try {
-    await sequelize.authenticate();
-    console.log('Conexión a la base de datos exitosa');
-    const body = await c.req.json();
-    const { email, password } = body;
-
+    const { email, password } = await c.req.json();
     const user = await User.findOne({ where: { email } });
     if (!user || !bcryptjs.compareSync(password, user.password)) {
       return c.json({ error: 'Credenciales inválidas' }, 401);
     }
-
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    return c.json({ token, user: { id: user.id, email: user.email, role: user.role } }, 200);
-  } catch (error) {
-    console.error('Error en login:', error);
-    return c.json({ error: error.message }, 500);
+    return c.json({ token, user: { id: user.id, email: user.email, role: user.role } });
+  } catch (err) {
+    return c.json({ error: 'Error en login' }, 500);
   }
 });
 
@@ -368,14 +336,17 @@ app.put('/users/:id', async (c) => {
 app.get('/lotes', async (c) => {
   const client = await pool.connect();
   try {
-    console.log('Consultando lotes...');
-    const res = await client.query('SELECT id, "loteId", cantidad, "pesoInicial", "fechaIngreso", estado FROM "Lotes" LIMIT 50');
-    return c.json(res.rows);
+    const { rows } = await client.query(`
+      SELECT id, "loteId", cantidad, "pesoInicial", "fechaIngreso", estado 
+      FROM "Lotes" 
+      ORDER BY "fechaIngreso" DESC 
+      LIMIT 50
+    `);
+    return c.json(rows);
   } catch (err) {
-    console.error('Error:', err.message);
     return c.json({ error: 'Error al cargar lotes' }, 500);
   } finally {
-    client.release(); // ← LIBERA SIEMPRE
+    client.release();
   }
 });
 
@@ -605,32 +576,18 @@ app.get('/salud/:id', async (c) => {
 });
 
 app.put('/salud/:id', async (c) => {
-  const user = c.get('user');
-  if (user?.role === 'viewer') return c.json({ error: 'Acceso denegado' }, 403);
-  try {
-    const { id } = c.req.param();
-    const { loteId, tipo, nombre, cantidad, fecha } = await c.req.json();
-    const salud = await Salud.findByPk(id, { timeout: 5000 });
-    if (!salud) return c.json({ error: 'Evento de salud no encontrado' }, 404);
-    if (isNaN(cantidad) || cantidad <= 0) {
-      return c.json({ error: 'Cantidad debe ser un número positivo' }, 400);
-    }
-    await salud.update({
-      loteId: loteId || salud.loteId,
-      tipo: tipo || salud.tipo,
-      nombre: nombre || salud.nombre,
-      cantidad: quantity !== undefined ? parseFloat(cantidad) : salud.cantidad,
-      fecha: fecha || salud.fecha
-    }, { timeout: 5000 });
-    console.log('Evento de salud actualizado:', salud.toJSON());
-    return c.json(salud);
-  } catch (error) {
-    console.error('Error al actualizar evento de salud:', error);
-    if (error.name === 'SequelizeConnectionAcquireTimeoutError' || error.message.includes('timeout')) {
-      return c.json({ error: 'Tiempo de espera agotado al actualizar evento de salud' }, 503);
-    }
-    return c.json({ error: 'Error al actualizar evento de salud: ' + error.message }, 500);
-  }
+  const { id } = c.req.param();
+  const { loteId, tipo, nombre, cantidad, fecha } = await c.req.json();
+  const salud = await Salud.findByPk(id);
+  if (!salud) return c.json({ error: 'No encontrado' }, 404);
+  await salud.update({
+    loteId: loteId || salud.loteId,
+    tipo: tipo || salud.tipo,
+    nombre: nombre || salud.nombre,
+    cantidad: cantidad !== undefined ? parseFloat(cantidad) : salud.cantidad, // CORREGIDO
+    fecha: fecha ? new Date(fecha) : salud.fecha
+  });
+  return c.json(salud);
 });
 
 app.delete('/salud/:id', async (c) => {
@@ -707,8 +664,8 @@ app.post('/costos', async (c) => {
 app.get('/ventas', async (c) => {
   const client = await pool.connect();
   try {
-    const res = await client.query('SELECT * FROM "Ventas" LIMIT 50');
-    return c.json(res.rows);
+    const { rows } = await client.query('SELECT * FROM "Ventas" ORDER BY fecha DESC LIMIT 50');
+    return c.json(rows);
   } catch (err) {
     return c.json({ error: 'Error al obtener ventas' }, 500);
   } finally {
