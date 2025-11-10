@@ -26,10 +26,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'tu_clave_secreta_123';
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
   dialectOptions: {
-    ssl: {
-      require: true,
-      rejectUnauthorized: false  // Render usa certificados autofirmados
-    }
+    ssl: { require: true, rejectUnauthorized: false }
   }
 });
 
@@ -887,6 +884,4 @@ app.delete('/config/:id', authenticate, async (req, res) => {
 
 // Inicia el servidor
 const PORT = process.env.PORT || 10000;
-
-
-
+app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
