@@ -11,9 +11,13 @@ const app = express();
 
 // Configuración avanzada de CORS
 app.use(cors({
-  origin: 'https://granja-vincwill-frontend.vercel.app', 
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: (origin, callback) => {
+    if (!origin || origin.includes('vercel.app')) {
+      callback(null, true);
+    } else {
+      callback(new Error('No permitido por CORS'));
+    }
+  },
   credentials: true
 }));
 
