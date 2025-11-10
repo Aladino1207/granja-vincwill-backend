@@ -6,7 +6,8 @@ const cors = require('cors');
 const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const app = express();
+const app = express(); 
+
 
 // Configuración avanzada de CORS
 app.use(cors({
