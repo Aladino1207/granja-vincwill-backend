@@ -6,18 +6,13 @@ const cors = require('cors');
 const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const app = express(); 
-
+const app = express();
 
 // Configuración avanzada de CORS
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || origin.includes('vercel.app')) {
-      callback(null, true);
-    } else {
-      callback(new Error('No permitido por CORS'));
-    }
-  },
+  origin: 'https://granja-vincwill-frontend.vercel.app', 
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
 
@@ -30,12 +25,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'tu_clave_secreta_123';
 // Configurar PostgreSQL
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  logging: (msg) => console.log('SQL:', msg),
   dialectOptions: {
-    ssl: {
-      require: true,
-      rejectUnauthorized: false
-    }
+    ssl: { require: true, rejectUnauthorized: false }
   }
 });
 
@@ -194,22 +185,19 @@ app.get('/', (req, res) => {
 app.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log('Intentando login con email:', email, 'y contraseña proporcionada:', password);
     const user = await User.findOne({ where: { email } });
-    if (!user) {
-      console.log('Usuario no encontrado para email:', email);
-      return res.status(401).json({ error: 'Credenciales inválidas' });
-    }
-    if (!bcryptjs.compareSync(password, user.password)) {
-      console.log('Contraseña incorrecta para usuario:', email);
+    if (!user || !bcryptjs.compareSync(password, user.password)) {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
     const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '1h' });
-    console.log('Login exitoso para usuario:', email);
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
-  } catch (error) {
-    console.error('Error en login:', error);
-    res.status(500).json({ error: 'Error en login' });
+  } catch (err) {
+    console.error('Login error:', err);
+    // Distingue errores de DB vs otros
+    if (err.name?.includes('Sequelize')) {
+      return res.status(503).json({ error: 'Servicio de base de datos no disponible' });
+    }
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
 
@@ -896,4 +884,8 @@ app.delete('/config/:id', authenticate, async (req, res) => {
 
 // Inicia el servidor
 const PORT = process.env.PORT || 10000;
+<<<<<<< HEAD
+app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
+=======
 app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT} - Rutas registradas: ${Object.keys(app._router.stack).length}`));
+>>>>>>> 3a38ae2 (codigo original)
