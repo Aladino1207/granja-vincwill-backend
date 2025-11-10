@@ -1,4 +1,4 @@
-const API_URL = 'https://granja-vincwill-backend.onrender.com';
+//const API_URL = 'https://granja-vincwill-backend.onrender.com';
 
 const express = require('express');
 const { Sequelize, DataTypes } = require('sequelize');
@@ -884,8 +884,5 @@ app.delete('/config/:id', authenticate, async (req, res) => {
 
 // Inicia el servidor
 const PORT = process.env.PORT || 10000;
-<<<<<<< HEAD
-app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
-=======
-app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT} - Rutas registradas: ${Object.keys(app._router.stack).length}`));
->>>>>>> 3a38ae2 (codigo original)
+
+
