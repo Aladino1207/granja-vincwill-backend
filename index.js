@@ -1,7 +1,7 @@
 //const API_URL = 'https://granja-vincwill-backend.onrender.com';
 
 const express = require('express');
-const { Sequelize, DataTypes } = require('sequelize');
+const { Sequelize, DataTypes, Op } = require('sequelize');
 const cors = require('cors');
 const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -73,7 +73,8 @@ const Salud = sequelize.define('Salud', {
   tipo: { type: DataTypes.STRING, allowNull: false },
   nombre: { type: DataTypes.STRING, allowNull: false },
   cantidad: { type: DataTypes.INTEGER, allowNull: false },
-  fecha: { type: DataTypes.DATE, allowNull: false }
+  fecha: { type: DataTypes.DATE, allowNull: false }, 
+  fechaRetiro: { type: DataTypes.DATE, allowNull: true }
 });
 
 const Costo = sequelize.define('Costo', {
@@ -123,7 +124,7 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
   try {
     await sequelize.authenticate();
     console.log('Conexión a la base de datos establecida');
-    await sequelize.sync({ force: true });
+    await sequelize.sync({ alter: true });
     console.log('Base de datos sincronizada con PostgreSQL');
     // Verifica si la tabla Inventarios existe
     const tableExists = await sequelize.getQueryInterface().showAllTables().then(tables => tables.includes('Inventarios'));
@@ -667,6 +668,24 @@ app.post('/ventas', authenticate, async (req, res) => {
     if (!loteId || !cantidadVendida || !peso || !precio || !fecha) {
       console.log('Faltan campos obligatorios');
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+
+    // Buscar si este lote tiene algún tratamiento activo
+    const fechaVenta = new Date(fecha);
+
+    const ultimoTratamiento = await Salud.findOne({
+      where: {
+        loteId: parseInt(loteId),
+        fechaRetiro: { [Op.gt]: fechaVenta } 
+      },
+      order: [['fechaRetiro', 'DESC']]
+    });
+
+    // Si encontramos un tratamiento, bloqueamos la venta
+    if (ultimoTratamiento) {
+      return res.status(400).json({ 
+        error: `Venta bloqueada por bioseguridad. El lote está en período de retiro hasta: ${new Date(ultimoTratamiento.fechaRetiro).toLocaleDateString()}` 
+      });
     }
 
     const lote = await Lote.findByPk(loteId);
