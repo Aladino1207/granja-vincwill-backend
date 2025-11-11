@@ -123,7 +123,7 @@ Venta.belongsTo(Lote, { foreignKey: 'loteId' });
   try {
     await sequelize.authenticate();
     console.log('Conexión a la base de datos establecida');
-    await sequelize.sync({ alter: true });
+    await sequelize.sync({ force: true });
     console.log('Base de datos sincronizada con PostgreSQL');
     // Verifica si la tabla Inventarios existe
     const tableExists = await sequelize.getQueryInterface().showAllTables().then(tables => tables.includes('Inventarios'));
