@@ -50,6 +50,7 @@ const Lote = sequelize.define('Lote', {
 const Seguimiento = sequelize.define('Seguimiento', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } },
+  alimentoId: { type: DataTypes.INTEGER, allowNull: false,references: { model: Inventario, key: 'id' } },
   semana: { type: DataTypes.INTEGER, allowNull: false },
   peso: { type: DataTypes.FLOAT, allowNull: false },
   consumo: { type: DataTypes.FLOAT, allowNull: false },
@@ -107,7 +108,8 @@ const Config = sequelize.define('Config', {
 
 // Definir relaciones explícitas
 Lote.hasMany(Seguimiento, { foreignKey: 'loteId' });
-Seguimiento.belongsTo(Lote, { foreignKey: 'loteId' });
+Inventario.hasMany(Seguimiento, { foreignKey: 'alimentoId' });
+Seguimiento.belongsTo(Inventario, { foreignKey: 'alimentoId' });
 Lote.hasMany(Salud, { foreignKey: 'loteId' });
 Salud.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Costo, { foreignKey: 'loteId' });
@@ -418,21 +420,51 @@ app.get('/seguimiento', authenticate, async (req, res) => {
 
 app.post('/seguimiento', authenticate, async (req, res) => {
   if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  const t = await sequelize.transaction();
+
   try {
-    const { loteId, semana, peso, consumo, observaciones, fecha } = req.body;
+    const { loteId, alimentoId, semana, peso, consumo, observaciones, fecha } = req.body;
+    
     if (!loteId || !semana || !peso || !consumo || !fecha) {
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
     }
+
+    // Validamos el consumo
+    const consumoNumerico = parseFloat(consumo);
+    if (!loteId || !alimentoId || !semana || !peso || !consumo || !fecha || isNaN(consumoNumerico) || consumoNumerico <= 0) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios o el consumo es inválido' });
+    }
+    // BUSCAMOS EL ALIMENTO ESPECÍFICO
+    const alimento = await Inventario.findByPk(parseInt(alimentoId), {
+      transaction: t,
+      lock: t.LOCK.UPDATE // Bloqueamos la fila para evitar concurrencia
+    });
+
+    // Validar el stock
+    if (!alimento) {
+      throw new Error('Insumo de alimento no encontrado.');
+    }
+    if (alimento.cantidad < consumoNumerico) {
+      throw new Error(`Stock de ${alimento.producto} insuficiente. Stock actual: ${alimento.cantidad} kg.`);
+    }
+
+    // 4. Crear el registro de seguimiento
     const seguimiento = await Seguimiento.create({
       loteId: parseInt(loteId),
+      alimentoId: parseInt(alimentoId), // <--- GUARDAMOS EL ID
       semana: parseInt(semana),
       peso: parseFloat(peso),
-      consumo: parseFloat(consumo),
+      consumo: consumoNumerico,
       observaciones: observaciones || null,
       fecha: new Date(fecha)
-    });
+    }, { transaction: t });
+
+    await alimento.decrement('cantidad', { by: consumoNumerico, transaction: t });
+    await t.commit();
     res.status(201).json(seguimiento);
   } catch (error) {
+    await t.rollback();
+    console.error('Error en transacción de seguimiento:', error);
     res.status(500).json({ error: 'Error al crear seguimiento: ' + error.message });
   }
 });
