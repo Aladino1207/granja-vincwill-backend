@@ -47,6 +47,15 @@ const Lote = sequelize.define('Lote', {
   estado: { type: DataTypes.STRING, allowNull: false, defaultValue: 'disponible' }
 });
 
+const Inventario = sequelize.define('Inventario', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  producto: { type: DataTypes.STRING, allowNull: false },
+  categoria: { type: DataTypes.STRING, allowNull: false },
+  cantidad: { type: DataTypes.FLOAT, allowNull: false },
+  costo: { type: DataTypes.FLOAT, allowNull: false },
+  fecha: { type: DataTypes.DATE, allowNull: false }
+});
+
 const Seguimiento = sequelize.define('Seguimiento', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } },
@@ -89,14 +98,6 @@ const Venta = sequelize.define('Venta', {
   cliente: { type: DataTypes.STRING, allowNull: true }
 });
 
-const Inventario = sequelize.define('Inventario', {
-  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  producto: { type: DataTypes.STRING, allowNull: false },
-  categoria: { type: DataTypes.STRING, allowNull: false },
-  cantidad: { type: DataTypes.FLOAT, allowNull: false },
-  costo: { type: DataTypes.FLOAT, allowNull: false },
-  fecha: { type: DataTypes.DATE, allowNull: false }
-});
 
 const Config = sequelize.define('Config', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
