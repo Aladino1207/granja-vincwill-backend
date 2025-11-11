@@ -59,7 +59,7 @@ const Inventario = sequelize.define('Inventario', {
 const Seguimiento = sequelize.define('Seguimiento', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } },
-  alimentoId: { type: DataTypes.INTEGER, allowNull: false,references: { model: Inventario, key: 'id' } },
+  alimentoId: { type: DataTypes.INTEGER, allowNull: true,references: { model: Inventario, key: 'id' } },
   semana: { type: DataTypes.INTEGER, allowNull: false },
   peso: { type: DataTypes.FLOAT, allowNull: false },
   consumo: { type: DataTypes.FLOAT, allowNull: false },
