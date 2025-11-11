@@ -89,6 +89,13 @@ const Costo = sequelize.define('Costo', {
   timestamps: true // Opcional: añade createdAt y updatedAt
 });
 
+const Agua = sequelize.define('Agua', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } },
+  cantidad: { type: DataTypes.FLOAT, allowNull: false }, // Litros consumidos
+  fecha: { type: DataTypes.DATE, allowNull: false }
+});
+
 const Venta = sequelize.define('Venta', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } },
@@ -117,6 +124,7 @@ Salud.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Costo, { foreignKey: 'loteId' });
 Costo.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Venta, { foreignKey: 'loteId' });
+Agua.belongsTo(Lote, { foreignKey: 'loteId' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 
 // Sincronizar base de datos con depuración
@@ -311,6 +319,47 @@ app.post('/reporte', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Error al generar reporte:', error);
     res.status(500).json({ error: 'Error al generar reporte: ' + error.message });
+  }
+});
+
+// Endpoint para agua
+app.get('/agua', authenticate, async (req, res) => {
+  try {
+    const agua = await Agua.findAll({ include: Lote }); // Incluimos Lote
+    res.json(agua);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener registros de agua' });
+  }
+});
+
+app.post('/agua', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { loteId, cantidad, fecha } = req.body;
+    if (!loteId || !cantidad || !fecha) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+    const registro = await Agua.create({
+      loteId: parseInt(loteId),
+      cantidad: parseFloat(cantidad),
+      fecha: new Date(fecha)
+    });
+    res.status(201).json(registro);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al crear registro de agua: ' + error.message });
+  }
+});
+
+app.delete('/agua/:id', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { id } = req.params;
+    const registro = await Agua.findByPk(id);
+    if (!registro) return res.status(404).json({ error: 'Registro no encontrado' });
+    await registro.destroy();
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: 'Error al eliminar registro de agua' });
   }
 });
 
