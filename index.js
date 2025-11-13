@@ -10,7 +10,7 @@ const app = express();
 
 // Configuración avanzada de CORS
 app.use(cors({
-  origin: 'https://granja-vincwill-frontend.vercel.app', 
+  origin: 'https://granja-vincwill-frontend.vercel.app',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
@@ -59,7 +59,7 @@ const Inventario = sequelize.define('Inventario', {
 const Seguimiento = sequelize.define('Seguimiento', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } },
-  alimentoId: { type: DataTypes.INTEGER, allowNull: true,references: { model: Inventario, key: 'id' } },
+  alimentoId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Inventario, key: 'id' } },
   semana: { type: DataTypes.INTEGER, allowNull: false },
   peso: { type: DataTypes.FLOAT, allowNull: false },
   consumo: { type: DataTypes.FLOAT, allowNull: false },
@@ -73,8 +73,14 @@ const Salud = sequelize.define('Salud', {
   tipo: { type: DataTypes.STRING, allowNull: false },
   nombre: { type: DataTypes.STRING, allowNull: false },
   cantidad: { type: DataTypes.INTEGER, allowNull: false },
-  fecha: { type: DataTypes.DATE, allowNull: false }, 
+  fecha: { type: DataTypes.DATE, allowNull: false },
   fechaRetiro: { type: DataTypes.DATE, allowNull: true }
+});
+
+const Agenda = sequelize.define('Agenda', {
+  descripcion: { type: DataTypes.STRING, allowNull: false },
+  fecha: { type: DataTypes.DATEONLY, allowNull: false },
+  completado: { type: DataTypes.BOOLEAN, defaultValue: false }
 });
 
 const Costo = sequelize.define('Costo', {
@@ -322,6 +328,42 @@ app.post('/reporte', authenticate, async (req, res) => {
   }
 });
 
+// --- Endpoints para la Agenda ---
+app.get('/agenda', authenticate, async (req, res) => {
+  try {
+    // Ordenamos por fecha para que salgan en orden
+    const eventos = await Agenda.findAll({ order: [['fecha', 'ASC']] });
+    res.json(eventos);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener agenda' });
+  }
+});
+
+app.post('/agenda', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { descripcion, fecha } = req.body;
+    if (!descripcion || !fecha) return res.status(400).json({ error: 'Faltan datos' });
+
+    const evento = await Agenda.create({ descripcion, fecha });
+    res.status(201).json(evento);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al crear evento' });
+  }
+});
+
+app.delete('/agenda/:id', authenticate, async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const evento = await Agenda.findByPk(req.params.id);
+    if (!evento) return res.status(404).json({ error: 'Evento no encontrado' });
+    await evento.destroy();
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: 'Error al eliminar evento' });
+  }
+});
+
 // Endpoint para agua
 app.get('/agua', authenticate, async (req, res) => {
   try {
@@ -475,7 +517,7 @@ app.post('/seguimiento', authenticate, async (req, res) => {
 
   try {
     const { loteId, alimentoId, semana, peso, consumo, observaciones, fecha } = req.body;
-    
+
     if (!loteId || !semana || !peso || !consumo || !fecha) {
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
     }
@@ -725,15 +767,15 @@ app.post('/ventas', authenticate, async (req, res) => {
     const ultimoTratamiento = await Salud.findOne({
       where: {
         loteId: parseInt(loteId),
-        fechaRetiro: { [Op.gt]: fechaVenta } 
+        fechaRetiro: { [Op.gt]: fechaVenta }
       },
       order: [['fechaRetiro', 'DESC']]
     });
 
     // Si encontramos un tratamiento, bloqueamos la venta
     if (ultimoTratamiento) {
-      return res.status(400).json({ 
-        error: `Venta bloqueada por bioseguridad. El lote está en período de retiro hasta: ${new Date(ultimoTratamiento.fechaRetiro).toLocaleDateString()}` 
+      return res.status(400).json({
+        error: `Venta bloqueada por bioseguridad. El lote está en período de retiro hasta: ${new Date(ultimoTratamiento.fechaRetiro).toLocaleDateString()}`
       });
     }
 
