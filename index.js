@@ -621,21 +621,64 @@ app.get('/salud', authenticate, async (req, res) => {
 
 app.post('/salud', authenticate, async (req, res) => {
   if (req.user.role === 'viewer') return res.status(403).json({ error: 'Acceso denegado' });
+
+  // Iniciamos una transacción para asegurar integridad
+  const t = await sequelize.transaction();
+
   try {
-    const { loteId, tipo, nombre, cantidad, fecha } = req.body;
+    const { loteId, tipo, nombre, cantidad, fecha, fechaRetiro } = req.body;
+
     console.log('Solicitud POST /salud recibida:', req.body);
+
     if (!loteId || !tipo || !nombre || !cantidad || !fecha) {
+      await t.rollback();
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
     }
-    if (isNaN(cantidad) || cantidad <= 0) {
+
+    const cantidadNum = parseFloat(cantidad);
+    if (isNaN(cantidadNum) || cantidadNum <= 0) {
+      await t.rollback();
       return res.status(400).json({ error: 'Cantidad debe ser un número positivo' });
     }
-    const salud = await Salud.create({ loteId, tipo, nombre, cantidad, fecha });
+
+    // Crear el registro de salud
+    const salud = await Salud.create({
+      loteId,
+      tipo,
+      nombre,
+      cantidad: cantidadNum,
+      fecha: new Date(fecha),
+      fechaRetiro: fechaRetiro ? new Date(fechaRetiro) : null
+    }, { transaction: t });
+
+    // Lógica Especial: Si es Mortalidad, restamos del Lote
+    // Normalizamos a minúsculas para evitar errores si escriben "mortalidad" o "Mortalidad"
+    if (tipo.toLowerCase() === 'mortalidad') {
+      const lote = await Lote.findByPk(loteId, { transaction: t });
+
+      if (!lote) {
+        throw new Error('Lote no encontrado');
+      }
+
+      // Validamos que no mueran más pollos de los que existen
+      if (lote.cantidad < cantidadNum) {
+        throw new Error(`Error: Reportas ${cantidadNum} muertes, pero el lote solo tiene ${lote.cantidad} aves.`);
+      }
+
+      await lote.decrement('cantidad', { by: cantidadNum, transaction: t });
+      console.log(`Stock del lote ${loteId} actualizado por mortalidad.`);
+    }
+
+    // Confirmar todo
+    await t.commit();
     console.log('Evento de salud creado:', salud.toJSON());
     res.status(201).json(salud);
+
   } catch (error) {
+    // Si algo falla, deshacemos todo (no se crea el evento ni se resta el lote)
+    await t.rollback();
     console.error('Error al crear evento de salud:', error);
-    res.status(500).json({ error: 'Error al crear evento de salud: ' + error.message });
+    res.status(500).json({ error: 'Error al crear evento: ' + error.message });
   }
 });
 
