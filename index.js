@@ -191,7 +191,7 @@ Seguimiento.belongsTo(Inventario, { foreignKey: 'alimentoId' });
     // 5. ¡NO SUBAS 'force: true' A PRODUCCIÓN O BORRARÁS TODO CADA REINICIO!
 
     // await sequelize.sync({ force: true }); // Usar 1 VEZ para borrar y migrar
-    await sequelize.sync({ alter: true }); // Usar esta línea para el día a día
+    await sequelize.sync({ force: true }); // Usar esta línea para el día a día
 
     console.log('Base de datos sincronizada');
 
@@ -200,17 +200,21 @@ Seguimiento.belongsTo(Inventario, { foreignKey: 'alimentoId' });
       where: { email: 'admin@example.com' },
       defaults: { name: 'Admin', password: bcryptjs.hashSync('admin123', 10), role: 'admin' }
     });
+    // 3. Crear granja de ejemplo
     const [granja] = await Granja.findOrCreate({
       where: { nombre: 'Granja Principal' },
       defaults: { ubicacion: 'Matriz' }
     });
+    // 4. DARLE ACCESO AL ADMIN A ESA GRANJA (Esta es la línea que te desatasca)
     await UserGranja.findOrCreate({
       where: { userId: user.id, granjaId: granja.id }
     });
+    // 5. Crear la config para esa granja
     await Config.findOrCreate({
       where: { granjaId: granja.id },
       defaults: { nombreGranja: 'Granja Principal' }
     });
+    console.log('Datos de arranque creados. Admin asignado a Granja Principal.');
 
   } catch (error) {
     console.error('Error al conectar o sincronizar la base de datos:', error);
