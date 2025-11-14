@@ -41,10 +41,31 @@ const Granja = sequelize.define('Granja', {
   ubicacion: { type: DataTypes.STRING, allowNull: true },
 });
 
-// Tabla Pivote: Qué usuarios acceden a qué granjas
 const UserGranja = sequelize.define('UserGranja', {
   userId: { type: DataTypes.INTEGER, references: { model: User, key: 'id' } },
   granjaId: { type: DataTypes.INTEGER, references: { model: Granja, key: 'id' } }
+});
+
+const Proveedor = sequelize.define('Proveedor', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  nombreCompania: { type: DataTypes.STRING, allowNull: false, unique: true },
+  ruc: { type: DataTypes.STRING, allowNull: false, unique: true },
+  nombreRepresentante: { type: DataTypes.STRING, allowNull: true },
+  emailRepresentante: { type: DataTypes.STRING, allowNull: true },
+  telefono: { type: DataTypes.STRING, allowNull: true },
+  direccion: { type: DataTypes.STRING, allowNull: true },
+  tipoServicio: { type: DataTypes.STRING, allowNull: true } // Ej: Alimento, Medicinas
+});
+
+const Cliente = sequelize.define('Cliente', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
+  nombre: { type: DataTypes.STRING, allowNull: false },
+  tipoIdentificacion: { type: DataTypes.STRING, allowNull: false }, // Cédula, RUC, Pasaporte
+  identificacion: { type: DataTypes.STRING, allowNull: false },
+  telefono: { type: DataTypes.STRING, allowNull: true },
+  email: { type: DataTypes.STRING, allowNull: true },
+  direccion: { type: DataTypes.STRING, allowNull: true }
 });
 
 const Inventario = sequelize.define('Inventario', {
@@ -105,11 +126,11 @@ const Venta = sequelize.define('Venta', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
   loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } },
+  clienteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Cliente, key: 'id' } },
   cantidadVendida: { type: DataTypes.INTEGER, allowNull: false },
   peso: { type: DataTypes.FLOAT, allowNull: false },
-  precio: { type: DataTypes.FLOAT, allowNull: false }, // Precio por KG
-  fecha: { type: DataTypes.DATE, allowNull: false },
-  cliente: { type: DataTypes.STRING, allowNull: true }
+  precio: { type: DataTypes.FLOAT, allowNull: false },
+  fecha: { type: DataTypes.DATE, allowNull: false }
 });
 
 const Agua = sequelize.define('Agua', {
@@ -151,6 +172,7 @@ Granja.hasMany(Venta, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
 Granja.hasMany(Agua, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
 Granja.hasMany(Agenda, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
 Granja.hasOne(Config, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
+Granja.hasMany(Cliente, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
 
 // (El resto) -> Granja
 Lote.belongsTo(Granja, { foreignKey: 'granjaId' });
@@ -162,6 +184,7 @@ Venta.belongsTo(Granja, { foreignKey: 'granjaId' });
 Agua.belongsTo(Granja, { foreignKey: 'granjaId' });
 Agenda.belongsTo(Granja, { foreignKey: 'granjaId' });
 Config.belongsTo(Granja, { foreignKey: 'granjaId' });
+Cliente.belongsTo(Granja, { foreignKey: 'granjaId' });
 
 // Relaciones Internas
 Lote.hasMany(Seguimiento, { foreignKey: 'loteId', onDelete: 'CASCADE' });
@@ -176,6 +199,8 @@ Lote.hasMany(Agua, { foreignKey: 'loteId', onDelete: 'CASCADE' });
 Agua.belongsTo(Lote, { foreignKey: 'loteId' });
 Inventario.hasMany(Seguimiento, { foreignKey: 'alimentoId', onDelete: 'SET NULL' });
 Seguimiento.belongsTo(Inventario, { foreignKey: 'alimentoId' });
+Cliente.hasMany(Venta, { foreignKey: 'clienteId' });
+Venta.belongsTo(Cliente, { foreignKey: 'clienteId' });
 
 // --- 3. SINCRONIZACIÓN DE BASE DE DATOS ---
 (async () => {
@@ -191,7 +216,7 @@ Seguimiento.belongsTo(Inventario, { foreignKey: 'alimentoId' });
     // 5. ¡NO SUBAS 'force: true' A PRODUCCIÓN O BORRARÁS TODO CADA REINICIO!
 
     // await sequelize.sync({ force: true }); // Usar 1 VEZ para borrar y migrar
-    await sequelize.sync({ alter: true }); // Usar esta línea para el día a día
+    await sequelize.sync({ force: true }); // Usar esta línea para el día a día
 
     console.log('Base de datos sincronizada');
 
@@ -214,6 +239,29 @@ Seguimiento.belongsTo(Inventario, { foreignKey: 'alimentoId' });
       where: { granjaId: granja.id },
       defaults: { nombreGranja: 'Granja Principal' }
     });
+
+    // Crear un Proveedor de ejemplo (Global)
+    await Proveedor.findOrCreate({
+      where: { ruc: '9999999999001' },
+      defaults: {
+        nombreCompania: 'Alimentos Balanceados S.A.',
+        nombreRepresentante: 'Carlos Proveedor',
+        emailRepresentante: 'carlos@proveedor.com',
+        tipoServicio: 'Alimento'
+      }
+    });
+
+    // Crear un Cliente de ejemplo (para Granja 1)
+    await Cliente.findOrCreate({
+      where: { identificacion: '9999999999', granjaId: granja.id },
+      defaults: {
+        nombre: 'Cliente Final (Consumidor)',
+        tipoIdentificacion: 'Cédula',
+        telefono: '0999999999',
+        granjaId: granja.id
+      }
+    });
+
     console.log('Datos de arranque creados. Admin asignado a Granja Principal.');
 
   } catch (error) {
@@ -235,7 +283,7 @@ const authenticate = (req, res, next) => {
 };
 
 // --- 5. ENDPOINTS BÁSICOS ---
-app.get('/', (req, res) => res.json({ message: 'Bienvenido a la API V 3.0' }));
+app.get('/', (req, res) => res.json({ message: 'Bienvenido a la API V 3.1' }));
 
 app.post('/login', async (req, res) => {
   try {
@@ -345,7 +393,6 @@ const checkGranjaId = (req) => {
   if (!granjaId) {
     throw new Error('granjaId (en query o body) es requerido');
   }
-  // En V 4.0, aquí chequearías si req.user.id tiene acceso a granjaId
   return parseInt(granjaId);
 };
 
@@ -396,6 +443,111 @@ app.delete('/lotes/:id', authenticate, async (req, res) => {
     await lote.destroy(); // Esto borra en CASCADA (Salud, Costos, etc.)
     res.status(204).send();
   } catch (error) { res.status(500).json({ error: 'Error al eliminar lote' }); }
+});
+
+// ---  NUEVOS ENDPOINTS CLIENTES (Blindados) ---
+app.get('/clientes', authenticate, async (req, res) => {
+  try {
+    const granjaId = checkGranjaId(req);
+    const items = await Cliente.findAll({ where: { granjaId } });
+    res.json(items);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/clientes/:id', authenticate, async (req, res) => {
+  try {
+    const granjaId = checkGranjaId(req);
+    const item = await Cliente.findOne({ where: { id: req.params.id, granjaId } });
+    if (!item) return res.status(404).json({ error: 'Cliente no encontrado' });
+    res.json(item);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/clientes', authenticate, async (req, res) => {
+  try {
+    const granjaId = checkGranjaId(req);
+    // Validar que la identificación no se repita *en esa granja*
+    const existe = await Cliente.findOne({ where: { identificacion: req.body.identificacion, granjaId } });
+    if (existe) return res.status(400).json({ error: 'Ya existe un cliente con esa identificación en esta granja' });
+
+    const item = await Cliente.create(req.body);
+    res.status(201).json(item);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/clientes/:id', authenticate, async (req, res) => {
+  try {
+    const granjaId = checkGranjaId(req);
+    const item = await Cliente.findOne({ where: { id: req.params.id, granjaId } });
+    if (!item) return res.status(404).json({ error: 'Cliente no encontrado' });
+
+    // Validar si la nueva identificación ya existe (y no es él mismo)
+    const { identificacion } = req.body;
+    if (identificacion && identificacion !== item.identificacion) {
+      const existe = await Cliente.findOne({ where: { identificacion, granjaId } });
+      if (existe) return res.status(400).json({ error: 'La nueva identificación ya está en uso' });
+    }
+
+    await item.update(req.body);
+    res.json(item);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/clientes/:id', authenticate, async (req, res) => {
+  try {
+    const granjaId = checkGranjaId(req);
+    const item = await Cliente.findOne({ where: { id: req.params.id, granjaId } });
+    if (!item) return res.status(404).json({ error: 'Cliente no encontrado' });
+    await item.destroy();
+    res.status(204).send();
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+
+// ---ENDPOINTS DE PROVEEDORES (Globales, Admin) ---
+app.get('/proveedores', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const items = await Proveedor.findAll();
+    res.json(items);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/proveedores/:id', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const item = await Proveedor.findByPk(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Proveedor no encontrado' });
+    res.json(item);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/proveedores', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const item = await Proveedor.create(req.body);
+    res.status(201).json(item);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/proveedores/:id', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const item = await Proveedor.findByPk(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Proveedor no encontrado' });
+    await item.update(req.body);
+    res.json(item);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/proveedores/:id', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const item = await Proveedor.findByPk(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Proveedor no encontrado' });
+    await item.destroy();
+    res.status(204).send();
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 // --- Inventario ---
@@ -605,10 +757,13 @@ app.delete('/costos/:id', authenticate, async (req, res) => {
 app.get('/ventas', authenticate, async (req, res) => {
   try {
     const granjaId = checkGranjaId(req);
-    // Incluimos el nombre del Lote para mostrar en la tabla
     const items = await Venta.findAll({
       where: { granjaId },
-      include: { model: Lote, attributes: ['loteId'] }
+      include: [
+        { model: Lote, attributes: ['loteId'] }, // Trae el nombre del lote
+        { model: Cliente, attributes: ['nombre'] } // Trae el nombre del cliente
+      ],
+      order: [['fecha', 'DESC']]
     });
     res.json(items);
   } catch (error) { res.status(500).json({ error: error.message }); }
@@ -624,10 +779,13 @@ app.get('/ventas/:id', authenticate, async (req, res) => {
 app.post('/ventas', authenticate, async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { granjaId, loteId, cantidadVendida, fecha } = req.body;
-    if (!granjaId) throw new Error('granjaId requerido');
+    // CAMBIO: 'cliente' ya no existe, ahora es 'clienteId'
+    const { granjaId, loteId, cantidadVendida, fecha, clienteId } = req.body;
+    if (!granjaId || !loteId || !cantidadVendida || !fecha || !clienteId) {
+      throw new Error('Faltan datos (granjaId, loteId, cantidad, fecha, clienteId)');
+    }
 
-    // Check Bioseguridad
+    // Check Bioseguridad (Sin cambios)
     const fechaVenta = new Date(fecha);
     const ultimoTratamiento = await Salud.findOne({
       where: { loteId, granjaId, fechaRetiro: { [Op.gt]: fechaVenta } }
@@ -636,15 +794,17 @@ app.post('/ventas', authenticate, async (req, res) => {
       throw new Error(`Venta bloqueada. Lote en retiro hasta: ${new Date(ultimoTratamiento.fechaRetiro).toLocaleDateString()}`);
     }
 
-    // Check Stock
+    // Check Stock (Sin cambios)
     const lote = await Lote.findOne({ where: { id: loteId, granjaId }, transaction: t });
     if (!lote) throw new Error('Lote no encontrado');
     if (lote.estado !== 'disponible' || lote.cantidad < cantidadVendida) {
       throw new Error(`Stock insuficiente (${lote.cantidad})`);
     }
 
+    // Crear la Venta (con clienteId)
     const venta = await Venta.create(req.body, { transaction: t });
 
+    // Actualizar Lote (Sin cambios)
     await lote.update({
       cantidad: lote.cantidad - cantidadVendida,
       estado: (lote.cantidad - cantidadVendida) > 0 ? 'disponible' : 'vendido'
