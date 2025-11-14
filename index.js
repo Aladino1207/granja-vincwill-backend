@@ -1,7 +1,7 @@
 //const API_URL = 'https://granja-vincwill-backend.onrender.com';
 
 const express = require('express');
-const { Sequelize, DataTypes, Op } = require('sequelize'); // Importar 'Op'
+const { Sequelize, DataTypes, Op } = require('sequelize');
 const cors = require('cors');
 const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -71,8 +71,9 @@ const Cliente = sequelize.define('Cliente', {
 const Inventario = sequelize.define('Inventario', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
+  proveedorId: { type: DataTypes.INTEGER, references: { model: Proveedor, key: 'id' } },
   producto: { type: DataTypes.STRING, allowNull: false },
-  categoria: { type: DataTypes.STRING, allowNull: false }, // 'Alimento', 'Vacuna', 'Cama', 'Otro'
+  categoria: { type: DataTypes.STRING, allowNull: false },
   cantidad: { type: DataTypes.FLOAT, allowNull: false },
   costo: { type: DataTypes.FLOAT, allowNull: false },
   fecha: { type: DataTypes.DATE, allowNull: false }
@@ -185,6 +186,10 @@ Agua.belongsTo(Granja, { foreignKey: 'granjaId' });
 Agenda.belongsTo(Granja, { foreignKey: 'granjaId' });
 Config.belongsTo(Granja, { foreignKey: 'granjaId' });
 Cliente.belongsTo(Granja, { foreignKey: 'granjaId' });
+
+// --- NUEVA RELACIÓN INVENTARIO -> PROVEEDOR ---
+Proveedor.hasMany(Inventario, { foreignKey: 'proveedorId' });
+Inventario.belongsTo(Proveedor, { foreignKey: 'proveedorId' });
 
 // Relaciones Internas
 Lote.hasMany(Seguimiento, { foreignKey: 'loteId', onDelete: 'CASCADE' });
@@ -554,7 +559,10 @@ app.delete('/proveedores/:id', authenticate, async (req, res) => {
 app.get('/inventario', authenticate, async (req, res) => {
   try {
     const granjaId = checkGranjaId(req);
-    const items = await Inventario.findAll({ where: { granjaId } });
+    const items = await Inventario.findAll({
+      where: { granjaId },
+      include: { model: Proveedor, attributes: ['nombreCompania'] } // <-- V 3.1
+    });
     res.json(items);
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
