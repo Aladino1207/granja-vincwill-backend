@@ -84,6 +84,12 @@ const Lote = sequelize.define('Lote', {
   granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
   proveedorId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Proveedor, key: 'id' } },
   loteId: { type: DataTypes.STRING, allowNull: false },
+  // --- CAMPOS DE SEXADO (V 3.3) ---
+  cantidadMachos: { type: DataTypes.INTEGER, defaultValue: 0 },
+  pesoPromedioMachos: { type: DataTypes.FLOAT, defaultValue: 0 },
+  cantidadHembras: { type: DataTypes.INTEGER, defaultValue: 0 },
+  pesoPromedioHembras: { type: DataTypes.FLOAT, defaultValue: 0 },
+  // Totales (Calculados o ingresados)
   cantidad: { type: DataTypes.INTEGER, allowNull: false },
   cantidadInicial: { type: DataTypes.INTEGER, allowNull: false },
   pesoInicial: { type: DataTypes.FLOAT, allowNull: false },
@@ -163,6 +169,7 @@ const Config = sequelize.define('Config', {
 // --- 2. DEFINIR RELACIONES ---
 User.belongsToMany(Granja, { through: UserGranja, foreignKey: 'userId' });
 Granja.belongsToMany(User, { through: UserGranja, foreignKey: 'granjaId' });
+
 Granja.hasMany(Lote, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
 Lote.belongsTo(Granja, { foreignKey: 'granjaId' });
 
@@ -226,7 +233,7 @@ Venta.belongsTo(Cliente, { foreignKey: 'clienteId' });
     // 5. ¡NO SUBAS 'force: true' A PRODUCCIÓN O BORRARÁS TODO CADA REINICIO!
 
     // await sequelize.sync({ force: true }); // Usar 1 VEZ para borrar y migrar
-    await sequelize.sync({ alter: true }); // Usar esta línea para el día a día
+    await sequelize.sync({ force: true }); // Usar esta línea para el día a día
 
     console.log('Base de datos sincronizada');
 
@@ -412,7 +419,6 @@ app.get('/lotes', authenticate, async (req, res) => {
     const granjaId = checkGranjaId(req);
     const lotes = await Lote.findAll({
       where: { granjaId },
-      // Incluimos el Proveedor para mostrarlo en la tabla
       include: { model: Proveedor, attributes: ['nombreCompania'] },
       order: [['fechaIngreso', 'DESC']]
     });
@@ -429,14 +435,23 @@ app.get('/lotes/:id', authenticate, async (req, res) => {
 });
 app.post('/lotes', authenticate, async (req, res) => {
   try {
-    const { granjaId, loteId, cantidad, proveedorId } = req.body; // <-- Recibimos proveedorId
-    if (!granjaId || !loteId || !cantidad) throw new Error('Faltan datos');
+    const { granjaId, loteId, cantidadMachos, cantidadHembras } = req.body;
+    if (!granjaId || !loteId) throw new Error('Faltan datos básicos');
 
+    // Validar unicidad en granja
     const existe = await Lote.findOne({ where: { loteId, granjaId } });
     if (existe) return res.status(400).json({ error: 'El ID de Lote ya existe' });
 
-    req.body.cantidadInicial = cantidad;
-    // Sequelize guardará 'proveedorId' automáticamente si está en req.body
+    // Cálculo de totales (Backup en servidor por si el frontend falla)
+    const machos = parseInt(cantidadMachos) || 0;
+    const hembras = parseInt(cantidadHembras) || 0;
+    const total = machos + hembras;
+
+    if (total <= 0) return res.status(400).json({ error: 'La cantidad total debe ser mayor a 0' });
+
+    req.body.cantidad = total;
+    req.body.cantidadInicial = total;
+
     const lote = await Lote.create(req.body);
     res.status(201).json(lote);
   } catch (error) { res.status(500).json({ error: error.message }); }
@@ -446,9 +461,22 @@ app.put('/lotes/:id', authenticate, async (req, res) => {
     const granjaId = checkGranjaId(req);
     const lote = await Lote.findOne({ where: { id: req.params.id, granjaId } });
     if (!lote) return res.status(404).json({ error: 'Lote no encontrado' });
+
+    // Si editan cantidades, recalcular totales (si no se han vendido)
+    // Nota: Esto es delicado si ya hubo ventas/muertes. Asumimos edición simple.
+    const machos = req.body.cantidadMachos !== undefined ? parseInt(req.body.cantidadMachos) : lote.cantidadMachos;
+    const hembras = req.body.cantidadHembras !== undefined ? parseInt(req.body.cantidadHembras) : lote.cantidadHembras;
+
+    // Solo actualizamos el total si el lote está intacto (mismo stock que inicial)
+    // Si no, requeriría lógica de ajuste más compleja.
+    if (lote.cantidad === lote.cantidadInicial) {
+      req.body.cantidad = machos + hembras;
+      req.body.cantidadInicial = machos + hembras;
+    }
+
     await lote.update(req.body);
     res.json(lote);
-  } catch (error) { res.status(500).json({ error: 'Error al actualizar lote' }); }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 app.delete('/lotes/:id', authenticate, async (req, res) => {
   try {
