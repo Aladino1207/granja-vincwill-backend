@@ -10,7 +10,7 @@ const app = express();
 
 // Configuración de CORS (asumiendo que tienes una configuración)
 app.use(cors({
-  origin: '*', // O sé más específico con tu URL de Vercel
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
@@ -71,7 +71,7 @@ const Cliente = sequelize.define('Cliente', {
 const Inventario = sequelize.define('Inventario', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
-  proveedorId: { type: DataTypes.INTEGER, references: { model: Proveedor, key: 'id' } },
+  proveedorId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Proveedor, key: 'id' } },
   producto: { type: DataTypes.STRING, allowNull: false },
   categoria: { type: DataTypes.STRING, allowNull: false },
   cantidad: { type: DataTypes.FLOAT, allowNull: false },
@@ -82,12 +82,13 @@ const Inventario = sequelize.define('Inventario', {
 const Lote = sequelize.define('Lote', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
-  loteId: { type: DataTypes.STRING, allowNull: false }, // ID visible (Ej: "LOTE-001")
-  cantidad: { type: DataTypes.INTEGER, allowNull: false }, // Cantidad actual (disminuye con mortalidad/ventas)
-  cantidadInicial: { type: DataTypes.INTEGER, allowNull: false }, // Para cálculos de mortalidad
+  proveedorId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Proveedor, key: 'id' } },
+  loteId: { type: DataTypes.STRING, allowNull: false },
+  cantidad: { type: DataTypes.INTEGER, allowNull: false },
+  cantidadInicial: { type: DataTypes.INTEGER, allowNull: false },
   pesoInicial: { type: DataTypes.FLOAT, allowNull: false },
   fechaIngreso: { type: DataTypes.DATE, allowNull: false },
-  estado: { type: DataTypes.STRING, allowNull: false, defaultValue: 'disponible' } // 'disponible', 'vendido'
+  estado: { type: DataTypes.STRING, allowNull: false, defaultValue: 'disponible' }
 });
 
 const Seguimiento = sequelize.define('Seguimiento', {
@@ -162,6 +163,8 @@ const Config = sequelize.define('Config', {
 // --- 2. DEFINIR RELACIONES ---
 User.belongsToMany(Granja, { through: UserGranja, foreignKey: 'userId' });
 Granja.belongsToMany(User, { through: UserGranja, foreignKey: 'granjaId' });
+Granja.hasMany(Lote, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
+Lote.belongsTo(Granja, { foreignKey: 'granjaId' });
 
 // Granja -> (El resto)
 Granja.hasMany(Lote, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
@@ -188,6 +191,8 @@ Config.belongsTo(Granja, { foreignKey: 'granjaId' });
 Cliente.belongsTo(Granja, { foreignKey: 'granjaId' });
 
 // --- NUEVA RELACIÓN INVENTARIO -> PROVEEDOR ---
+Proveedor.hasMany(Lote, { foreignKey: 'proveedorId' });
+Lote.belongsTo(Proveedor, { foreignKey: 'proveedorId' });
 Proveedor.hasMany(Inventario, { foreignKey: 'proveedorId' });
 Inventario.belongsTo(Proveedor, { foreignKey: 'proveedorId' });
 
@@ -221,7 +226,7 @@ Venta.belongsTo(Cliente, { foreignKey: 'clienteId' });
     // 5. ¡NO SUBAS 'force: true' A PRODUCCIÓN O BORRARÁS TODO CADA REINICIO!
 
     // await sequelize.sync({ force: true }); // Usar 1 VEZ para borrar y migrar
-    await sequelize.sync({ alter: true }); // Usar esta línea para el día a día
+    await sequelize.sync({ force: true }); // Usar esta línea para el día a día
 
     console.log('Base de datos sincronizada');
 
@@ -405,7 +410,12 @@ const checkGranjaId = (req) => {
 app.get('/lotes', authenticate, async (req, res) => {
   try {
     const granjaId = checkGranjaId(req);
-    const lotes = await Lote.findAll({ where: { granjaId }, order: [['fechaIngreso', 'DESC']] });
+    const lotes = await Lote.findAll({
+      where: { granjaId },
+      // Incluimos el Proveedor para mostrarlo en la tabla
+      include: { model: Proveedor, attributes: ['nombreCompania'] },
+      order: [['fechaIngreso', 'DESC']]
+    });
     res.json(lotes);
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -419,17 +429,17 @@ app.get('/lotes/:id', authenticate, async (req, res) => {
 });
 app.post('/lotes', authenticate, async (req, res) => {
   try {
-    const { granjaId, loteId, cantidad } = req.body;
-    if (!granjaId || !loteId || !cantidad) throw new Error('Faltan datos (granjaId, loteId, cantidad)');
+    const { granjaId, loteId, cantidad, proveedorId } = req.body; // <-- Recibimos proveedorId
+    if (!granjaId || !loteId || !cantidad) throw new Error('Faltan datos');
 
-    // Validar que el loteId no se repita *en esa granja*
     const existe = await Lote.findOne({ where: { loteId, granjaId } });
-    if (existe) return res.status(400).json({ error: 'El ID de Lote ya existe en esta granja' });
+    if (existe) return res.status(400).json({ error: 'El ID de Lote ya existe' });
 
-    req.body.cantidadInicial = cantidad; // Guardamos la cantidad original
+    req.body.cantidadInicial = cantidad;
+    // Sequelize guardará 'proveedorId' automáticamente si está en req.body
     const lote = await Lote.create(req.body);
     res.status(201).json(lote);
-  } catch (error) { res.status(500).json({ error: 'Error al crear lote: ' + error.message }); }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 app.put('/lotes/:id', authenticate, async (req, res) => {
   try {
