@@ -238,7 +238,7 @@ Venta.belongsTo(Cliente, { foreignKey: 'clienteId' });
     // 5. ¡NO SUBAS 'force: true' A PRODUCCIÓN O BORRARÁS TODO CADA REINICIO!
 
     // await sequelize.sync({ force: true }); // Usar 1 VEZ para borrar y migrar
-    await sequelize.sync({ force: true }); // Usar esta línea para el día a día
+    await sequelize.sync({ alter: true }); // Usar esta línea para el día a día
 
     console.log('Base de datos sincronizada');
 
@@ -1075,35 +1075,30 @@ app.post('/reporte', authenticate, async (req, res) => {
 
     switch (tipoReporte) {
 
-      // --- CASO 1: LIQUIDACIÓN DE LOTE (EL ANÁLISIS ZOO-ECONÓMICO) ---
+      // --- CASO 1: LIQUIDACIÓN DE LOTE (Zootécnico + Financiero) ---
       case 'liquidacion':
         if (!loteId) throw new Error('Para la liquidación, debes seleccionar un Lote específico.');
 
-        // 1. Obtener datos base del lote
         const lote = await Lote.findOne({
           where: { id: loteId, granjaId },
           include: [{ model: Proveedor, attributes: ['nombreCompania'] }]
         });
         if (!lote) throw new Error('Lote no encontrado');
 
-        // 2. Obtener totales financieros
         const ventas = await Venta.findAll({ where: { loteId, granjaId } });
         const costos = await Costo.findAll({ where: { loteId, granjaId } });
-
-        // 3. Obtener datos zootécnicos
         const salud = await Salud.findAll({ where: { loteId, granjaId } });
         const seguimiento = await Seguimiento.findAll({ where: { loteId, granjaId } });
 
-        // 4. Cálculos Matemáticos
+        // Cálculos
         const totalIngresos = ventas.reduce((sum, v) => sum + (v.peso * v.precio), 0);
         const totalKilosCarne = ventas.reduce((sum, v) => sum + v.peso, 0);
         const avesVendidas = ventas.reduce((sum, v) => sum + v.cantidadVendida, 0);
-
         const totalCostos = costos.reduce((sum, c) => sum + c.monto, 0);
         const mortalidad = salud.filter(s => s.tipo.toLowerCase() === 'mortalidad').reduce((sum, s) => sum + s.cantidad, 0);
         const consumoAlimento = seguimiento.reduce((sum, s) => sum + s.consumo, 0);
 
-        // KPIs Avanzados
+        // KPIs
         const avesIniciadas = lote.cantidadInicial;
         const mortalidadPorc = avesIniciadas > 0 ? ((mortalidad / avesIniciadas) * 100).toFixed(2) : 0;
         const conversionAlimenticia = totalKilosCarne > 0 ? (consumoAlimento / totalKilosCarne).toFixed(3) : 0;
@@ -1111,22 +1106,20 @@ app.post('/reporte', authenticate, async (req, res) => {
         const utilidadNeta = totalIngresos - totalCostos;
         const rentabilidad = totalIngresos > 0 ? ((utilidadNeta / totalIngresos) * 100).toFixed(2) : 0;
 
-        // 5. Estructurar la respuesta (Objeto Complejo)
         data = [{
-          // Encabezado
           lote: lote.loteId,
-          proveedor: lote.Proveedor ? lote.Proveedor.nombreCompania : 'N/A',
-          fechaIngreso: new Date(lote.fechaIngreso).toLocaleDateString(),
+          proveedor: lote.Proveedor ? lote.Proveedor.nombreCompania : 'No registrado',
+          // V 3.3: Datos de sexado
+          machos: lote.cantidadMachos,
+          hembras: lote.cantidadHembras,
 
-          // Zootecnia
+          fechaIngreso: new Date(lote.fechaIngreso).toLocaleDateString(),
           avesIniciadas,
           avesVendidas,
           mortalidad: `${mortalidad} (${mortalidadPorc}%)`,
           pesoPromedio: `${pesoPromedioVenta} kg`,
           conversion: conversionAlimenticia,
           consumoTotal: `${consumoAlimento} kg`,
-
-          // Finanzas
           totalIngresos: totalIngresos,
           totalCostos: totalCostos,
           utilidad: utilidadNeta,
@@ -1134,7 +1127,50 @@ app.post('/reporte', authenticate, async (req, res) => {
         }];
         break;
 
-      case 'costos': // (Lógica anterior, simple)
+      // --- CASO 2: INVENTARIO VALORIZADO (NUEVO) ---
+      case 'inventario-actual':
+        // No usa fechas, es una foto del momento actual
+        const inventario = await Inventario.findAll({
+          where: { granjaId, cantidad: { [Op.gt]: 0 } }, // Solo lo que tiene stock > 0
+          include: [{ model: Proveedor, attributes: ['nombreCompania'] }]
+        });
+
+        data = inventario.map(i => ({
+          Producto: i.producto,
+          Categoria: i.categoria,
+          Proveedor: i.Proveedor ? i.Proveedor.nombreCompania : '-',
+          Stock: i.cantidad,
+          CostoUnit: i.costo.toFixed(4), // 4 decimales para precisión
+          ValorTotal: (i.cantidad * i.costo).toFixed(2)
+        }));
+
+        // Añadir fila de total general
+        const granTotal = inventario.reduce((sum, i) => sum + (i.cantidad * i.costo), 0);
+        data.push({ Producto: 'TOTAL ACTIVOS', Categoria: '', Proveedor: '', Stock: '', CostoUnit: '', ValorTotal: granTotal.toFixed(2) });
+        break;
+
+      // --- CASO 3: HISTORIAL SANITARIO (NUEVO) ---
+      case 'sanitario':
+        const eventosSalud = await Salud.findAll({
+          where: {
+            ...whereClause,
+            tipo: { [Op.or]: ['Vacunación', 'Tratamiento'] }
+          },
+          include: [{ model: Inventario, as: 'Vacuna', attributes: ['producto'] }, { model: Lote, attributes: ['loteId'] }],
+          order: [['fecha', 'ASC']]
+        });
+
+        data = eventosSalud.map(s => ({
+          Fecha: new Date(s.fecha).toLocaleDateString(),
+          Lote: s.Lote ? s.Lote.loteId : 'N/A',
+          Tipo: s.tipo,
+          Producto: s.Vacuna ? s.Vacuna.producto : s.nombre,
+          Dosis: s.cantidad,
+          Retiro: s.fechaRetiro ? new Date(s.fechaRetiro).toLocaleDateString() : '-'
+        }));
+        break;
+
+      case 'costos':
         const costosSimples = await Costo.findAll({ where: whereClause, include: [{ model: Lote, attributes: ['loteId'] }] });
         data = costosSimples.map(c => ({ Lote: c.Lote ? c.Lote.loteId : 'General', Categoria: c.categoria, Descripcion: c.descripcion, Monto: c.monto, Fecha: new Date(c.fecha).toLocaleDateString() }));
         data.push({ Lote: 'TOTAL', Categoria: '', Descripcion: '', Monto: costosSimples.reduce((s, c) => s + c.monto, 0), Fecha: '' });
@@ -1146,10 +1182,9 @@ app.post('/reporte', authenticate, async (req, res) => {
         break;
 
       default:
-        data = [{ Error: `Reporte '${tipoReporte}' no implementado aún.` }];
+        data = [{ Error: `Reporte '${tipoReporte}' no implementado.` }];
     }
     res.json(data);
-
   } catch (error) {
     res.status(500).json({ error: 'Error al generar reporte: ' + error.message });
   }
