@@ -113,11 +113,12 @@ const Salud = sequelize.define('Salud', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
   loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } },
-  tipo: { type: DataTypes.STRING, allowNull: false }, // 'Mortalidad', 'Vacuna', 'Tratamiento'
-  nombre: { type: DataTypes.STRING, allowNull: false }, // Ej: "Newcastle" o "Mortalidad Diaria"
-  cantidad: { type: DataTypes.INTEGER, allowNull: false },
+  vacunaId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Inventario, key: 'id' } },
+  tipo: { type: DataTypes.STRING, allowNull: false }, // 'Mortalidad', 'Vacunación', etc.
+  nombre: { type: DataTypes.STRING, allowNull: false }, // Nombre del evento
+  cantidad: { type: DataTypes.INTEGER, allowNull: false }, // Aves afectadas o dosis
   fecha: { type: DataTypes.DATE, allowNull: false },
-  fechaRetiro: { type: DataTypes.DATE, allowNull: true } // Para bioseguridad
+  fechaRetiro: { type: DataTypes.DATE, allowNull: true }
 });
 
 const Costo = sequelize.define('Costo', {
@@ -203,6 +204,10 @@ Lote.belongsTo(Proveedor, { foreignKey: 'proveedorId' });
 Proveedor.hasMany(Inventario, { foreignKey: 'proveedorId' });
 Inventario.belongsTo(Proveedor, { foreignKey: 'proveedorId' });
 
+// --- NUEVA RELACIÓN SALUD <-> INVENTARIO ---
+Inventario.hasMany(Salud, { foreignKey: 'vacunaId' });
+Salud.belongsTo(Inventario, { foreignKey: 'vacunaId', as: 'Vacuna' }); // Alias para incluir nombre
+
 // Relaciones Internas
 Lote.hasMany(Seguimiento, { foreignKey: 'loteId', onDelete: 'CASCADE' });
 Seguimiento.belongsTo(Lote, { foreignKey: 'loteId' });
@@ -233,7 +238,7 @@ Venta.belongsTo(Cliente, { foreignKey: 'clienteId' });
     // 5. ¡NO SUBAS 'force: true' A PRODUCCIÓN O BORRARÁS TODO CADA REINICIO!
 
     // await sequelize.sync({ force: true }); // Usar 1 VEZ para borrar y migrar
-    await sequelize.sync({ alter: true }); // Usar esta línea para el día a día
+    await sequelize.sync({ force: true }); // Usar esta línea para el día a día
 
     console.log('Base de datos sincronizada');
 
@@ -753,7 +758,10 @@ app.delete('/seguimiento/:id', authenticate, async (req, res) => {
 app.get('/salud', authenticate, async (req, res) => {
   try {
     const granjaId = checkGranjaId(req);
-    const items = await Salud.findAll({ where: { granjaId } });
+    const items = await Salud.findAll({
+      where: { granjaId },
+      include: [{ model: Inventario, as: 'Vacuna', attributes: ['producto'] }] // Incluir nombre vacuna
+    });
     res.json(items);
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -768,17 +776,42 @@ app.get('/salud/:id', authenticate, async (req, res) => {
 app.post('/salud', authenticate, async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { granjaId, loteId, tipo, cantidad } = req.body;
-    if (!granjaId) throw new Error('granjaId requerido');
+    // Recibimos vacunaId (opcional)
+    const { granjaId, loteId, tipo, nombre, cantidad, vacunaId, fecha, fechaRetiro } = req.body;
+    if (!granjaId || !loteId || !tipo || !nombre || !cantidad) throw new Error('Faltan campos obligatorios');
 
-    const salud = await Salud.create(req.body, { transaction: t });
+    const cantidadNum = parseFloat(cantidad);
 
+    // 1. Crear registro de Salud
+    const salud = await Salud.create({
+      granjaId, loteId, tipo, nombre, cantidad: cantidadNum, vacunaId, fecha, fechaRetiro
+    }, { transaction: t });
+
+    // 2. Lógica Mortalidad (Resta aves del lote)
     if (tipo.toLowerCase() === 'mortalidad') {
       const lote = await Lote.findOne({ where: { id: loteId, granjaId }, transaction: t });
       if (!lote) throw new Error('Lote no encontrado');
-      if (lote.cantidad < cantidad) throw new Error(`Mortalidad (${cantidad}) excede stock (${lote.cantidad})`);
-      await lote.decrement('cantidad', { by: cantidad, transaction: t });
+      if (lote.cantidad < cantidadNum) throw new Error(`Mortalidad (${cantidadNum}) excede stock (${lote.cantidad})`);
+      await lote.decrement('cantidad', { by: cantidadNum, transaction: t });
     }
+
+    // 3. Lógica Vacunación (Resta dosis del inventario)
+    if ((tipo.toLowerCase() === 'vacunación' || tipo.toLowerCase() === 'tratamiento') && vacunaId) {
+      const insumo = await Inventario.findOne({ where: { id: vacunaId, granjaId }, transaction: t });
+      if (!insumo) throw new Error('Insumo/Vacuna no encontrada en inventario');
+      if (insumo.cantidad < cantidadNum) throw new Error(`Stock insuficiente de ${insumo.producto}. Quedan ${insumo.cantidad}`);
+
+      await insumo.decrement('cantidad', { by: cantidadNum, transaction: t });
+
+      // Opcional: Generar Costo financiero automático
+      const costoDinero = cantidadNum * insumo.costo;
+      await Costo.create({
+        granjaId, loteId, categoria: 'Vacuna',
+        descripcion: `CONSUMO AUTOMÁTICO: ${insumo.producto} (${cantidadNum} dosis)`,
+        monto: costoDinero, fecha
+      }, { transaction: t });
+    }
+
     await t.commit();
     res.status(201).json(salud);
   } catch (error) {
