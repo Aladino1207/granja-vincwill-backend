@@ -1068,39 +1068,88 @@ app.post('/reporte', authenticate, async (req, res) => {
     const { tipoReporte, loteId, fechaInicio, fechaFin, granjaId } = req.body;
     if (!granjaId) throw new Error('granjaId requerido');
 
-    let data = [];
-    const whereClause = {
-      granjaId: parseInt(granjaId),
-      fecha: { [Op.between]: [new Date(fechaInicio), new Date(fechaFin)] }
-    };
+    const whereClause = { granjaId: parseInt(granjaId), fecha: { [Op.between]: [new Date(fechaInicio), new Date(fechaFin)] } };
     if (loteId) whereClause.loteId = loteId;
 
+    let data = [];
+
     switch (tipoReporte) {
-      case 'costos':
-        const costos = await Costo.findAll({
-          where: whereClause,
-          include: [{ model: Lote, attributes: ['loteId'] }]
+
+      // --- CASO 1: LIQUIDACIÓN DE LOTE (EL ANÁLISIS ZOO-ECONÓMICO) ---
+      case 'liquidacion':
+        if (!loteId) throw new Error('Para la liquidación, debes seleccionar un Lote específico.');
+
+        // 1. Obtener datos base del lote
+        const lote = await Lote.findOne({
+          where: { id: loteId, granjaId },
+          include: [{ model: Proveedor, attributes: ['nombreCompania'] }]
         });
-        data = costos.map(c => ({
-          Lote: c.Lote ? c.Lote.loteId : 'General',
-          Categoria: c.categoria,
-          Descripcion: c.descripcion,
-          Monto: c.monto,
-          Fecha: new Date(c.fecha).toLocaleDateString()
-        }));
-        // Añadir total
+        if (!lote) throw new Error('Lote no encontrado');
+
+        // 2. Obtener totales financieros
+        const ventas = await Venta.findAll({ where: { loteId, granjaId } });
+        const costos = await Costo.findAll({ where: { loteId, granjaId } });
+
+        // 3. Obtener datos zootécnicos
+        const salud = await Salud.findAll({ where: { loteId, granjaId } });
+        const seguimiento = await Seguimiento.findAll({ where: { loteId, granjaId } });
+
+        // 4. Cálculos Matemáticos
+        const totalIngresos = ventas.reduce((sum, v) => sum + (v.peso * v.precio), 0);
+        const totalKilosCarne = ventas.reduce((sum, v) => sum + v.peso, 0);
+        const avesVendidas = ventas.reduce((sum, v) => sum + v.cantidadVendida, 0);
+
         const totalCostos = costos.reduce((sum, c) => sum + c.monto, 0);
-        data.push({ Lote: 'TOTAL', Categoria: '', Descripcion: '', Monto: totalCostos, Fecha: '' });
+        const mortalidad = salud.filter(s => s.tipo.toLowerCase() === 'mortalidad').reduce((sum, s) => sum + s.cantidad, 0);
+        const consumoAlimento = seguimiento.reduce((sum, s) => sum + s.consumo, 0);
+
+        // KPIs Avanzados
+        const avesIniciadas = lote.cantidadInicial;
+        const mortalidadPorc = avesIniciadas > 0 ? ((mortalidad / avesIniciadas) * 100).toFixed(2) : 0;
+        const conversionAlimenticia = totalKilosCarne > 0 ? (consumoAlimento / totalKilosCarne).toFixed(3) : 0;
+        const pesoPromedioVenta = avesVendidas > 0 ? (totalKilosCarne / avesVendidas).toFixed(3) : 0;
+        const utilidadNeta = totalIngresos - totalCostos;
+        const rentabilidad = totalIngresos > 0 ? ((utilidadNeta / totalIngresos) * 100).toFixed(2) : 0;
+
+        // 5. Estructurar la respuesta (Objeto Complejo)
+        data = [{
+          // Encabezado
+          lote: lote.loteId,
+          proveedor: lote.Proveedor ? lote.Proveedor.nombreCompania : 'N/A',
+          fechaIngreso: new Date(lote.fechaIngreso).toLocaleDateString(),
+
+          // Zootecnia
+          avesIniciadas,
+          avesVendidas,
+          mortalidad: `${mortalidad} (${mortalidadPorc}%)`,
+          pesoPromedio: `${pesoPromedioVenta} kg`,
+          conversion: conversionAlimenticia,
+          consumoTotal: `${consumoAlimento} kg`,
+
+          // Finanzas
+          totalIngresos: totalIngresos,
+          totalCostos: totalCostos,
+          utilidad: utilidadNeta,
+          rentabilidad: `${rentabilidad}%`
+        }];
         break;
 
-      // ... (añadir casos para 'ventas', 'salud', 'seguimiento') ...
+      case 'costos': // (Lógica anterior, simple)
+        const costosSimples = await Costo.findAll({ where: whereClause, include: [{ model: Lote, attributes: ['loteId'] }] });
+        data = costosSimples.map(c => ({ Lote: c.Lote ? c.Lote.loteId : 'General', Categoria: c.categoria, Descripcion: c.descripcion, Monto: c.monto, Fecha: new Date(c.fecha).toLocaleDateString() }));
+        data.push({ Lote: 'TOTAL', Categoria: '', Descripcion: '', Monto: costosSimples.reduce((s, c) => s + c.monto, 0), Fecha: '' });
+        break;
+
+      case 'ventas':
+        const ventasSimples = await Venta.findAll({ where: whereClause, include: [{ model: Lote, attributes: ['loteId'] }, { model: Cliente, attributes: ['nombre'] }] });
+        data = ventasSimples.map(v => ({ Lote: v.Lote?.loteId, Cliente: v.Cliente?.nombre, Cantidad: v.cantidadVendida, Peso: v.peso, Total: (v.peso * v.precio).toFixed(2), Fecha: new Date(v.fecha).toLocaleDateString() }));
+        break;
 
       default:
-        // Añadimos un reporte de ejemplo si no se especificó uno válido
-        data = [{ Error: `Reporte '${tipoReporte}' no implementado.` }];
-      // return res.status(400).json({ error: 'Tipo de reporte no válido' });
+        data = [{ Error: `Reporte '${tipoReporte}' no implementado aún.` }];
     }
     res.json(data);
+
   } catch (error) {
     res.status(500).json({ error: 'Error al generar reporte: ' + error.message });
   }
