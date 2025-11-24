@@ -613,11 +613,43 @@ app.get('/inventario/:id', authenticate, async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 app.post('/inventario', authenticate, async (req, res) => {
+  const t = await sequelize.transaction();
   try {
-    checkGranjaId(req);
-    const item = await Inventario.create(req.body);
+    // Recibimos 'costoTotal' en lugar de unitario
+    const { granjaId, proveedorId, producto, categoria, cantidad, costoTotal, fecha } = req.body;
+
+    if (!granjaId) throw new Error('granjaId requerido');
+
+    // CÁLCULO AUTOMÁTICO: Costo Unitario = Total / Cantidad
+    // Si costoTotal es 1500 y cantidad 1320 => 1.1363...
+    const cantidadNum = parseFloat(cantidad);
+    const costoTotalNum = parseFloat(costoTotal);
+
+    if (cantidadNum <= 0) throw new Error('Cantidad debe ser mayor a 0');
+
+    const costoUnitario = costoTotalNum / cantidadNum;
+
+    const item = await Inventario.create({
+      granjaId,
+      proveedorId,
+      producto,
+      categoria,
+      cantidad: cantidadNum,
+      costo: costoUnitario, // Guardamos el unitario para cálculos futuros
+      fecha
+    }, { transaction: t });
+
+    // Opcional: Crear un registro de costo por la COMPRA del inventario (Cashflow negativo)
+    // await Costo.create({ ... }, { transaction: t }); 
+    // (Por ahora no lo hacemos para no confundir con el costo de consumo del lote)
+
+    await t.commit();
     res.status(201).json(item);
-  } catch (error) { res.status(500).json({ error: error.message }); }
+
+  } catch (error) {
+    await t.rollback();
+    res.status(500).json({ error: error.message });
+  }
 });
 app.put('/inventario/:id', authenticate, async (req, res) => {
   try {
@@ -657,16 +689,35 @@ app.get('/seguimiento/:id', authenticate, async (req, res) => {
 app.post('/seguimiento', authenticate, async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { granjaId, alimentoId, consumo } = req.body;
+    const { granjaId, loteId, alimentoId, consumo, semana, peso, observaciones, fecha } = req.body;
     if (!granjaId) throw new Error('granjaId requerido');
 
-    const seguimiento = await Seguimiento.create(req.body, { transaction: t });
+    // 1. Crear el registro de seguimiento físico (peso, consumo kg)
+    const seguimiento = await Seguimiento.create({
+      granjaId, loteId, alimentoId, semana, peso, consumo, observaciones, fecha
+    }, { transaction: t });
 
+    // 2. Lógica de Alimento (Si se seleccionó un insumo)
     if (alimentoId && consumo > 0) {
       const alimento = await Inventario.findOne({ where: { id: alimentoId, granjaId }, transaction: t });
+
       if (!alimento) throw new Error('Alimento no encontrado en esta granja');
-      if (alimento.cantidad < consumo) throw new Error('Stock de alimento insuficiente');
+      if (alimento.cantidad < consumo) throw new Error(`Stock insuficiente. Quedan ${alimento.cantidad} kg de ${alimento.producto}`);
+
+      // A. Descontar del Inventario Físico
       await alimento.decrement('cantidad', { by: consumo, transaction: t });
+
+      // B. ¡MAGIA! Crear el Costo Financiero automáticamente
+      const costoDinero = consumo * alimento.costo; // kg * precio_unitario
+
+      await Costo.create({
+        granjaId,
+        loteId, // Asignado a este lote
+        categoria: 'Alimento',
+        descripcion: `CONSUMO AUTOMÁTICO: ${alimento.producto} (${consumo} kg)`,
+        monto: costoDinero,
+        fecha: fecha
+      }, { transaction: t });
     }
 
     await t.commit();
