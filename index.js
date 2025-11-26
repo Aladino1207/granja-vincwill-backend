@@ -74,6 +74,7 @@ const Inventario = sequelize.define('Inventario', {
   proveedorId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Proveedor, key: 'id' } },
   producto: { type: DataTypes.STRING, allowNull: false },
   categoria: { type: DataTypes.STRING, allowNull: false },
+  unidadMedida: { type: DataTypes.STRING, allowNull: false, defaultValue: 'Unidades' },
   cantidad: { type: DataTypes.FLOAT, allowNull: false },
   costo: { type: DataTypes.FLOAT, allowNull: false },
   fecha: { type: DataTypes.DATE, allowNull: false }
@@ -621,7 +622,7 @@ app.post('/inventario', authenticate, async (req, res) => {
   const t = await sequelize.transaction();
   try {
     // Recibimos 'costoTotal' en lugar de unitario
-    const { granjaId, proveedorId, producto, categoria, cantidad, costoTotal, fecha } = req.body;
+    const { granjaId, proveedorId, producto, categoria, cantidad, costoTotal, fecha, unidadMedida } = req.body;
 
     if (!granjaId) throw new Error('granjaId requerido');
 
@@ -639,14 +640,11 @@ app.post('/inventario', authenticate, async (req, res) => {
       proveedorId,
       producto,
       categoria,
+      unidadMedida, // <-- Guardar unidadMedida
       cantidad: cantidadNum,
-      costo: costoUnitario, // Guardamos el unitario para cálculos futuros
+      costo: costoUnitario,
       fecha
     }, { transaction: t });
-
-    // Opcional: Crear un registro de costo por la COMPRA del inventario (Cashflow negativo)
-    // await Costo.create({ ... }, { transaction: t }); 
-    // (Por ahora no lo hacemos para no confundir con el costo de consumo del lote)
 
     await t.commit();
     res.status(201).json(item);
