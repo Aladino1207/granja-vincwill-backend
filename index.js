@@ -114,10 +114,10 @@ const Salud = sequelize.define('Salud', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
   loteId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Lote, key: 'id' } },
-  vacunaId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Inventario, key: 'id' } },
-  tipo: { type: DataTypes.STRING, allowNull: false }, // 'Mortalidad', 'Vacunación', etc.
-  nombre: { type: DataTypes.STRING, allowNull: false }, // Nombre del evento
-  cantidad: { type: DataTypes.INTEGER, allowNull: false }, // Aves afectadas o dosis
+  vacunaId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Inventario, key: 'id' } }, // Relación Inventario
+  tipo: { type: DataTypes.STRING, allowNull: false },
+  nombre: { type: DataTypes.STRING, allowNull: false },
+  cantidad: { type: DataTypes.FLOAT, allowNull: false },
   fecha: { type: DataTypes.DATE, allowNull: false },
   fechaRetiro: { type: DataTypes.DATE, allowNull: true }
 });
