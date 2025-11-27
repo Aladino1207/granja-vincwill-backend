@@ -758,10 +758,19 @@ app.get('/salud', authenticate, async (req, res) => {
     const granjaId = checkGranjaId(req);
     const items = await Salud.findAll({
       where: { granjaId },
-      include: [{ model: Inventario, as: 'Vacuna', attributes: ['producto'] }] // Incluir nombre vacuna
+      include: [
+        // Incluimos el nombre del producto (Vacuna)
+        { model: Inventario, as: 'Vacuna', attributes: ['producto'] },
+        // IMPORTANTE: Incluimos el nombre del Lote (esto faltaba)
+        { model: Lote, attributes: ['loteId'] }
+      ],
+      order: [['fecha', 'DESC']]
     });
     res.json(items);
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) {
+    console.error("Error GET /salud:", error); // Ver error en consola del servidor
+    res.status(500).json({ error: error.message });
+  }
 });
 app.get('/salud/:id', authenticate, async (req, res) => {
   try {
