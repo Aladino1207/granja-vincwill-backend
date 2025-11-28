@@ -85,15 +85,14 @@ const Lote = sequelize.define('Lote', {
   granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
   proveedorId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Proveedor, key: 'id' } },
   loteId: { type: DataTypes.STRING, allowNull: false },
-  // --- CAMPOS DE SEXADO (V 3.3) ---
   cantidadMachos: { type: DataTypes.INTEGER, defaultValue: 0 },
   pesoPromedioMachos: { type: DataTypes.FLOAT, defaultValue: 0 },
   cantidadHembras: { type: DataTypes.INTEGER, defaultValue: 0 },
   pesoPromedioHembras: { type: DataTypes.FLOAT, defaultValue: 0 },
-  // Totales (Calculados o ingresados)
   cantidad: { type: DataTypes.INTEGER, allowNull: false },
   cantidadInicial: { type: DataTypes.INTEGER, allowNull: false },
   pesoInicial: { type: DataTypes.FLOAT, allowNull: false },
+  costoInicial: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 0 },
   fechaIngreso: { type: DataTypes.DATE, allowNull: false },
   estado: { type: DataTypes.STRING, allowNull: false, defaultValue: 'disponible' }
 });
@@ -441,22 +440,21 @@ app.get('/lotes/:id', authenticate, async (req, res) => {
 });
 app.post('/lotes', authenticate, async (req, res) => {
   try {
-    const { granjaId, loteId, cantidadMachos, cantidadHembras } = req.body;
+    const { granjaId, loteId, cantidadMachos, cantidadHembras, costoInicial } = req.body; // <-- Recibimos costo
     if (!granjaId || !loteId) throw new Error('Faltan datos básicos');
 
-    // Validar unicidad en granja
     const existe = await Lote.findOne({ where: { loteId, granjaId } });
     if (existe) return res.status(400).json({ error: 'El ID de Lote ya existe' });
 
-    // Cálculo de totales (Backup en servidor por si el frontend falla)
     const machos = parseInt(cantidadMachos) || 0;
     const hembras = parseInt(cantidadHembras) || 0;
     const total = machos + hembras;
 
-    if (total <= 0) return res.status(400).json({ error: 'La cantidad total debe ser mayor a 0' });
+    if (total <= 0) return res.status(400).json({ error: 'Cantidad total debe ser > 0' });
 
     req.body.cantidad = total;
     req.body.cantidadInicial = total;
+    req.body.costoInicial = parseFloat(costoInicial) || 0; // Guardamos el dinero
 
     const lote = await Lote.create(req.body);
     res.status(201).json(lote);
@@ -1072,63 +1070,63 @@ app.post('/config', authenticate, async (req, res) => { // Es un "Guardar" (POST
 // --- Reportes ---
 app.post('/reporte', authenticate, async (req, res) => {
   try {
+    // ... (validaciones iniciales igual) ...
     const { tipoReporte, loteId, fechaInicio, fechaFin, granjaId } = req.body;
-    if (!granjaId) throw new Error('granjaId requerido');
-
     const whereClause = { granjaId: parseInt(granjaId), fecha: { [Op.between]: [new Date(fechaInicio), new Date(fechaFin)] } };
     if (loteId) whereClause.loteId = loteId;
-
     let data = [];
 
     switch (tipoReporte) {
-
-      // --- CASO 1: LIQUIDACIÓN DE LOTE (Zootécnico + Financiero) ---
       case 'liquidacion':
-        if (!loteId) throw new Error('Para la liquidación, debes seleccionar un Lote específico.');
+        if (!loteId) throw new Error('Selecciona un lote.');
 
+        // 1. Datos Lote
         const lote = await Lote.findOne({
           where: { id: loteId, granjaId },
           include: [{ model: Proveedor, attributes: ['nombreCompania'] }]
         });
-        if (!lote) throw new Error('Lote no encontrado');
 
+        // 2. Datos Operativos
         const ventas = await Venta.findAll({ where: { loteId, granjaId } });
         const costos = await Costo.findAll({ where: { loteId, granjaId } });
         const salud = await Salud.findAll({ where: { loteId, granjaId } });
         const seguimiento = await Seguimiento.findAll({ where: { loteId, granjaId } });
 
-        // Cálculos
-        const totalIngresos = ventas.reduce((sum, v) => sum + (v.peso * v.precio), 0);
-        const totalKilosCarne = ventas.reduce((sum, v) => sum + v.peso, 0);
+        // 3. Sumas
+        const totalVentas = ventas.reduce((sum, v) => sum + (v.peso * v.precio), 0);
+        const totalCostosOperativos = costos.reduce((sum, c) => sum + c.monto, 0);
+
+        // 4. CÁLCULO DE LA VERDADERA UTILIDAD
+        // Costo Total = (Compra de Pollitos) + (Alimento + Vacunas + Gastos Varios)
+        const costoInversionInicial = lote.costoInicial || 0; // <--- AQUÍ ESTÁ LA CLAVE
+        const granTotalCostos = totalCostosOperativos + costoInversionInicial;
+
+        const utilidadNeta = totalVentas - granTotalCostos;
+        const rentabilidad = granTotalCostos > 0 ? ((utilidadNeta / granTotalCostos) * 100).toFixed(2) : 0;
+
+        // KPIs Zootécnicos
         const avesVendidas = ventas.reduce((sum, v) => sum + v.cantidadVendida, 0);
-        const totalCostos = costos.reduce((sum, c) => sum + c.monto, 0);
+        const totalKilosCarne = ventas.reduce((sum, v) => sum + v.peso, 0);
         const mortalidad = salud.filter(s => s.tipo.toLowerCase() === 'mortalidad').reduce((sum, s) => sum + s.cantidad, 0);
         const consumoAlimento = seguimiento.reduce((sum, s) => sum + s.consumo, 0);
-
-        // KPIs
-        const avesIniciadas = lote.cantidadInicial;
-        const mortalidadPorc = avesIniciadas > 0 ? ((mortalidad / avesIniciadas) * 100).toFixed(2) : 0;
-        const conversionAlimenticia = totalKilosCarne > 0 ? (consumoAlimento / totalKilosCarne).toFixed(3) : 0;
-        const pesoPromedioVenta = avesVendidas > 0 ? (totalKilosCarne / avesVendidas).toFixed(3) : 0;
-        const utilidadNeta = totalIngresos - totalCostos;
-        const rentabilidad = totalIngresos > 0 ? ((utilidadNeta / totalIngresos) * 100).toFixed(2) : 0;
+        const conversion = totalKilosCarne > 0 ? (consumoAlimento / totalKilosCarne).toFixed(3) : 0;
 
         data = [{
           lote: lote.loteId,
-          proveedor: lote.Proveedor ? lote.Proveedor.nombreCompania : 'No registrado',
-          // V 3.3: Datos de sexado
-          machos: lote.cantidadMachos,
-          hembras: lote.cantidadHembras,
-
+          proveedor: lote.Proveedor ? lote.Proveedor.nombreCompania : 'N/A',
           fechaIngreso: new Date(lote.fechaIngreso).toLocaleDateString(),
-          avesIniciadas,
+
+          avesIniciadas: lote.cantidadInicial,
           avesVendidas,
-          mortalidad: `${mortalidad} (${mortalidadPorc}%)`,
-          pesoPromedio: `${pesoPromedioVenta} kg`,
-          conversion: conversionAlimenticia,
-          consumoTotal: `${consumoAlimento} kg`,
-          totalIngresos: totalIngresos,
-          totalCostos: totalCostos,
+          mortalidad,
+          conversion,
+
+          // Desglose Financiero para el PDF
+          inversionInicial: costoInversionInicial, // Para mostrarlo separado
+          gastosOperativos: totalCostosOperativos, // Alimento + Luz + Etc
+
+          totalIngresos: totalVentas,
+          totalCostos: granTotalCostos, // La suma de los dos anteriores
           utilidad: utilidadNeta,
           rentabilidad: `${rentabilidad}%`
         }];
