@@ -422,11 +422,7 @@ const checkGranjaId = (req) => {
 app.get('/lotes', authenticate, async (req, res) => {
   try {
     const granjaId = checkGranjaId(req);
-    const lotes = await Lote.findAll({
-      where: { granjaId },
-      include: { model: Proveedor, attributes: ['nombreCompania'] },
-      order: [['fechaIngreso', 'DESC']]
-    });
+    const lotes = await Lote.findAll({ where: { granjaId }, include: { model: Proveedor, attributes: ['nombreCompania'] }, order: [['fechaIngreso', 'DESC']] });
     res.json(lotes);
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -440,8 +436,9 @@ app.get('/lotes/:id', authenticate, async (req, res) => {
 });
 app.post('/lotes', authenticate, async (req, res) => {
   try {
-    const { granjaId, loteId, cantidadMachos, cantidadHembras, costoInicial } = req.body; // <-- Recibimos costo
-    if (!granjaId || !loteId) throw new Error('Faltan datos básicos');
+    // Recibimos costoInicial
+    const { granjaId, loteId, cantidadMachos, cantidadHembras, costoInicial } = req.body;
+    if (!granjaId || !loteId) throw new Error('Faltan datos');
 
     const existe = await Lote.findOne({ where: { loteId, granjaId } });
     if (existe) return res.status(400).json({ error: 'El ID de Lote ya existe' });
@@ -449,12 +446,11 @@ app.post('/lotes', authenticate, async (req, res) => {
     const machos = parseInt(cantidadMachos) || 0;
     const hembras = parseInt(cantidadHembras) || 0;
     const total = machos + hembras;
-
-    if (total <= 0) return res.status(400).json({ error: 'Cantidad total debe ser > 0' });
+    if (total <= 0) return res.status(400).json({ error: 'Total debe ser > 0' });
 
     req.body.cantidad = total;
     req.body.cantidadInicial = total;
-    req.body.costoInicial = parseFloat(costoInicial) || 0; // Guardamos el dinero
+    req.body.costoInicial = parseFloat(costoInicial) || 0; // Guardamos el costo
 
     const lote = await Lote.create(req.body);
     res.status(201).json(lote);
@@ -1079,54 +1075,49 @@ app.post('/reporte', authenticate, async (req, res) => {
     switch (tipoReporte) {
       case 'liquidacion':
         if (!loteId) throw new Error('Selecciona un lote.');
+        const lote = await Lote.findOne({ where: { id: loteId, granjaId }, include: [{ model: Proveedor, attributes: ['nombreCompania'] }] });
+        if (!lote) throw new Error('Lote no encontrado');
 
-        // 1. Datos Lote
-        const lote = await Lote.findOne({
-          where: { id: loteId, granjaId },
-          include: [{ model: Proveedor, attributes: ['nombreCompania'] }]
-        });
-
-        // 2. Datos Operativos
         const ventas = await Venta.findAll({ where: { loteId, granjaId } });
         const costos = await Costo.findAll({ where: { loteId, granjaId } });
         const salud = await Salud.findAll({ where: { loteId, granjaId } });
         const seguimiento = await Seguimiento.findAll({ where: { loteId, granjaId } });
 
-        // 3. Sumas
-        const totalVentas = ventas.reduce((sum, v) => sum + (v.peso * v.precio), 0);
+        const totalIngresos = ventas.reduce((sum, v) => sum + (v.peso * v.precio), 0);
         const totalCostosOperativos = costos.reduce((sum, c) => sum + c.monto, 0);
 
-        // 4. CÁLCULO DE LA VERDADERA UTILIDAD
-        // Costo Total = (Compra de Pollitos) + (Alimento + Vacunas + Gastos Varios)
-        const costoInversionInicial = lote.costoInicial || 0; // <--- AQUÍ ESTÁ LA CLAVE
-        const granTotalCostos = totalCostosOperativos + costoInversionInicial;
+        // AQUÍ ESTÁ EL CAMBIO: Sumamos el costo de compra del lote
+        const costoCompraLote = lote.costoInicial || 0;
+        const totalCostosReales = totalCostosOperativos + costoCompraLote;
 
-        const utilidadNeta = totalVentas - granTotalCostos;
-        const rentabilidad = granTotalCostos > 0 ? ((utilidadNeta / granTotalCostos) * 100).toFixed(2) : 0;
-
-        // KPIs Zootécnicos
         const avesVendidas = ventas.reduce((sum, v) => sum + v.cantidadVendida, 0);
         const totalKilosCarne = ventas.reduce((sum, v) => sum + v.peso, 0);
         const mortalidad = salud.filter(s => s.tipo.toLowerCase() === 'mortalidad').reduce((sum, s) => sum + s.cantidad, 0);
         const consumoAlimento = seguimiento.reduce((sum, s) => sum + s.consumo, 0);
-        const conversion = totalKilosCarne > 0 ? (consumoAlimento / totalKilosCarne).toFixed(3) : 0;
+
+        const avesIniciadas = lote.cantidadInicial;
+        const mortalidadPorc = avesIniciadas > 0 ? ((mortalidad / avesIniciadas) * 100).toFixed(2) : 0;
+        const conversionAlimenticia = totalKilosCarne > 0 ? (consumoAlimento / totalKilosCarne).toFixed(3) : 0;
+        const pesoPromedioVenta = avesVendidas > 0 ? (totalKilosCarne / avesVendidas).toFixed(3) : 0;
+
+        const utilidadNeta = totalIngresos - totalCostosReales;
+        const rentabilidad = totalCostosReales > 0 ? ((utilidadNeta / totalCostosReales) * 100).toFixed(2) : 0;
 
         data = [{
           lote: lote.loteId,
           proveedor: lote.Proveedor ? lote.Proveedor.nombreCompania : 'N/A',
           fechaIngreso: new Date(lote.fechaIngreso).toLocaleDateString(),
+          avesIniciadas, avesVendidas,
+          mortalidad: `${mortalidad} (${mortalidadPorc}%)`,
+          pesoPromedio: `${pesoPromedioVenta} kg`,
+          conversion: conversionAlimenticia,
+          consumoTotal: `${consumoAlimento} kg`,
 
-          avesIniciadas: lote.cantidadInicial,
-          avesVendidas,
-          mortalidad,
-          conversion,
-
-          // Desglose Financiero para el PDF
-          inversionInicial: costoInversionInicial, // Para mostrarlo separado
-          gastosOperativos: totalCostosOperativos, // Alimento + Luz + Etc
-
-          totalIngresos: totalVentas,
-          totalCostos: granTotalCostos, // La suma de los dos anteriores
+          // Datos financieros desglosados
+          totalIngresos,
+          costoOperativo: totalCostosOperativos,
+          costoCompraLote: costoCompraLote, // Para mostrarlo en el reporte
+          totalCostos: totalCostosReales,
           utilidad: utilidadNeta,
           rentabilidad: `${rentabilidad}%`
         }];
