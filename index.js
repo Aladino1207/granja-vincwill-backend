@@ -80,10 +80,19 @@ const Inventario = sequelize.define('Inventario', {
   fecha: { type: DataTypes.DATE, allowNull: false }
 });
 
+const Galpon = sequelize.define('Galpon', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
+  nombre: { type: DataTypes.STRING, allowNull: false }, // Ej: "Galpón 1"
+  capacidad: { type: DataTypes.INTEGER, allowNull: false }, // Ej: 5000 aves
+  estado: { type: DataTypes.STRING, defaultValue: 'libre' } // 'libre', 'ocupado'
+});
+
 const Lote = sequelize.define('Lote', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
   proveedorId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Proveedor, key: 'id' } },
+  galponId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Galpon, key: 'id' } },
   loteId: { type: DataTypes.STRING, allowNull: false },
   cantidadMachos: { type: DataTypes.INTEGER, defaultValue: 0 },
   pesoPromedioMachos: { type: DataTypes.FLOAT, defaultValue: 0 },
@@ -168,47 +177,49 @@ const Config = sequelize.define('Config', {
 });
 
 // --- 2. DEFINIR RELACIONES ---
+
+// --- RELACIONES DE USUARIOS Y GRANJAS ---
+// Un usuario puede tener acceso a muchas granjas y una granja puede tener muchos usuarios.
 User.belongsToMany(Granja, { through: UserGranja, foreignKey: 'userId' });
 Granja.belongsToMany(User, { through: UserGranja, foreignKey: 'granjaId' });
 
-Granja.hasMany(Lote, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
-Lote.belongsTo(Granja, { foreignKey: 'granjaId' });
-
-// Granja -> (El resto)
-Granja.hasMany(Lote, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
-Granja.hasMany(Inventario, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
-Granja.hasMany(Seguimiento, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
-Granja.hasMany(Salud, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
-Granja.hasMany(Costo, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
-Granja.hasMany(Venta, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
-Granja.hasMany(Agua, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
-Granja.hasMany(Agenda, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
+// --- RELACIONES MAESTRAS DE LA GRANJA (Uno a Muchos) ---
+// La Granja es la entidad principal. Si se borra una granja, se borra todo lo relacionado (CASCADE).
+// Infraestructura y Configuración
+Granja.hasMany(Galpon, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
+Galpon.belongsTo(Granja, { foreignKey: 'granjaId' });
 Granja.hasOne(Config, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
-Granja.hasMany(Cliente, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
-
-// (El resto) -> Granja
-Lote.belongsTo(Granja, { foreignKey: 'granjaId' });
-Inventario.belongsTo(Granja, { foreignKey: 'granjaId' });
-Seguimiento.belongsTo(Granja, { foreignKey: 'granjaId' });
-Salud.belongsTo(Granja, { foreignKey: 'granjaId' });
-Costo.belongsTo(Granja, { foreignKey: 'granjaId' });
-Venta.belongsTo(Granja, { foreignKey: 'granjaId' });
-Agua.belongsTo(Granja, { foreignKey: 'granjaId' });
-Agenda.belongsTo(Granja, { foreignKey: 'granjaId' });
 Config.belongsTo(Granja, { foreignKey: 'granjaId' });
+
+// Entidades de Negocio
+Granja.hasMany(Cliente, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
 Cliente.belongsTo(Granja, { foreignKey: 'granjaId' });
+Granja.hasMany(Agenda, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
+Agenda.belongsTo(Granja, { foreignKey: 'granjaId' });
 
-// --- NUEVA RELACIÓN INVENTARIO -> PROVEEDOR ---
-Proveedor.hasMany(Lote, { foreignKey: 'proveedorId' });
-Lote.belongsTo(Proveedor, { foreignKey: 'proveedorId' });
-Proveedor.hasMany(Inventario, { foreignKey: 'proveedorId' });
-Inventario.belongsTo(Proveedor, { foreignKey: 'proveedorId' });
+// Producción e Inventario (Relación directa con Granja para consultas rápidas y seguridad)
+Granja.hasMany(Lote, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
+Lote.belongsTo(Granja, { foreignKey: 'granjaId' });
+Granja.hasMany(Inventario, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
+Inventario.belongsTo(Granja, { foreignKey: 'granjaId' });
 
-// --- NUEVA RELACIÓN SALUD <-> INVENTARIO ---
-Inventario.hasMany(Salud, { foreignKey: 'vacunaId' });
-Salud.belongsTo(Inventario, { foreignKey: 'vacunaId', as: 'Vacuna' }); // Alias para incluir nombre
-
-// Relaciones Internas
+// Registros Operativos (También vinculados a Granja por seguridad)
+Granja.hasMany(Seguimiento, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
+Seguimiento.belongsTo(Granja, { foreignKey: 'granjaId' });
+Granja.hasMany(Salud, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
+Salud.belongsTo(Granja, { foreignKey: 'granjaId' });
+Granja.hasMany(Costo, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
+Costo.belongsTo(Granja, { foreignKey: 'granjaId' });
+Granja.hasMany(Venta, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
+Venta.belongsTo(Granja, { foreignKey: 'granjaId' });
+Granja.hasMany(Agua, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
+Agua.belongsTo(Granja, { foreignKey: 'granjaId' });
+// --- RELACIONES DE GALPONES Y LOTES ---
+// Los lotes viven dentro de un galpón.
+Galpon.hasMany(Lote, { foreignKey: 'galponId' });
+Lote.belongsTo(Galpon, { foreignKey: 'galponId' });
+// --- RELACIONES DE OPERACIÓN DEL LOTE (Uno a Muchos) ---
+// El Lote es el centro de la producción. Si borras un lote, borras su historial.
 Lote.hasMany(Seguimiento, { foreignKey: 'loteId', onDelete: 'CASCADE' });
 Seguimiento.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Salud, { foreignKey: 'loteId', onDelete: 'CASCADE' });
@@ -219,10 +230,27 @@ Lote.hasMany(Venta, { foreignKey: 'loteId', onDelete: 'CASCADE' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Agua, { foreignKey: 'loteId', onDelete: 'CASCADE' });
 Agua.belongsTo(Lote, { foreignKey: 'loteId' });
-Inventario.hasMany(Seguimiento, { foreignKey: 'alimentoId', onDelete: 'SET NULL' });
-Seguimiento.belongsTo(Inventario, { foreignKey: 'alimentoId' });
+
+// --- RELACIONES CON PROVEEDORES (Globales) ---
+// Los proveedores existen independientemente, pero se vinculan a Lotes e Inventario.
+Proveedor.hasMany(Lote, { foreignKey: 'proveedorId' });
+Lote.belongsTo(Proveedor, { foreignKey: 'proveedorId' });
+Proveedor.hasMany(Inventario, { foreignKey: 'proveedorId' });
+Inventario.belongsTo(Proveedor, { foreignKey: 'proveedorId' });
+// --- RELACIONES CON CLIENTES ---
+// Los clientes compran a través de Ventas.
 Cliente.hasMany(Venta, { foreignKey: 'clienteId' });
 Venta.belongsTo(Cliente, { foreignKey: 'clienteId' });
+// --- RELACIONES DE INVENTARIO Y CONSUMO ---
+// Conectan el stock físico con el uso en los lotes.
+
+// Alimento consumido en seguimiento
+Inventario.hasMany(Seguimiento, { foreignKey: 'alimentoId', onDelete: 'SET NULL' });
+Seguimiento.belongsTo(Inventario, { foreignKey: 'alimentoId' });
+
+// Vacunas aplicadas en salud (Nueva Relación V 3.3)
+Inventario.hasMany(Salud, { foreignKey: 'vacunaId', onDelete: 'SET NULL' });
+Salud.belongsTo(Inventario, { foreignKey: 'vacunaId', as: 'Vacuna' }); // Alias para incluir nombre en consultas
 
 // --- 3. SINCRONIZACIÓN DE BASE DE DATOS ---
 (async () => {
@@ -238,7 +266,7 @@ Venta.belongsTo(Cliente, { foreignKey: 'clienteId' });
     // 5. ¡NO SUBAS 'force: true' A PRODUCCIÓN O BORRARÁS TODO CADA REINICIO!
 
     //await sequelize.sync({ force: true }); // Usar 1 VEZ para borrar y migrar
-    await sequelize.sync({ alter: true }); // Usar esta línea para el día a día
+    await sequelize.sync({ force: true }); // Usar esta línea para el día a día
 
     console.log('Base de datos sincronizada');
 
@@ -418,6 +446,37 @@ const checkGranjaId = (req) => {
   return parseInt(granjaId);
 };
 
+// --- CRUD GALPONES ---
+app.get('/galpones', authenticate, async (req, res) => {
+  try {
+    const granjaId = checkGranjaId(req);
+    // Buscamos galpones y verificamos si tienen lotes activos para determinar estado real
+    const galpones = await Galpon.findAll({
+      where: { granjaId },
+      order: [['nombre', 'ASC']]
+    });
+    res.json(galpones);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/galpones', authenticate, async (req, res) => {
+  try {
+    checkGranjaId(req);
+    const galpon = await Galpon.create(req.body);
+    res.status(201).json(galpon);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/galpones/:id', authenticate, async (req, res) => {
+  try {
+    const granjaId = checkGranjaId(req);
+    const galpon = await Galpon.findOne({ where: { id: req.params.id, granjaId } });
+    if (!galpon) return res.status(404).json({ error: 'No encontrado' });
+    await galpon.destroy();
+    res.status(204).send();
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // --- Lotes ---
 app.get('/lotes', authenticate, async (req, res) => {
   try {
@@ -435,26 +494,39 @@ app.get('/lotes/:id', authenticate, async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 app.post('/lotes', authenticate, async (req, res) => {
+  const t = await sequelize.transaction();
   try {
-    // Recibimos costoInicial
-    const { granjaId, loteId, cantidadMachos, cantidadHembras, costoInicial } = req.body;
-    if (!granjaId || !loteId) throw new Error('Faltan datos');
+    const { granjaId, loteId, galponId, cantidad } = req.body;
+    if (!granjaId || !loteId || !galponId) throw new Error('Faltan datos');
 
-    const existe = await Lote.findOne({ where: { loteId, granjaId } });
-    if (existe) return res.status(400).json({ error: 'El ID de Lote ya existe' });
+    // 1. Verificar si el ID de lote ya existe
+    const existe = await Lote.findOne({ where: { loteId, granjaId }, transaction: t });
+    if (existe) throw new Error('El ID de Lote ya existe');
 
-    const machos = parseInt(cantidadMachos) || 0;
-    const hembras = parseInt(cantidadHembras) || 0;
-    const total = machos + hembras;
-    if (total <= 0) return res.status(400).json({ error: 'Total debe ser > 0' });
+    // 2. VERIFICAR DISPONIBILIDAD DE GALPÓN (La clave)
+    // Buscamos si hay ALGÚN lote en estado 'disponible' en ese galpón
+    const galponOcupado = await Lote.findOne({
+      where: { galponId, granjaId, estado: 'disponible' },
+      transaction: t
+    });
 
-    req.body.cantidad = total;
-    req.body.cantidadInicial = total;
-    req.body.costoInicial = parseFloat(costoInicial) || 0; // Guardamos el costo
+    if (galponOcupado) {
+      throw new Error(`El Galpón seleccionado ya está ocupado por el lote ${galponOcupado.loteId}. Debe cerrar ese lote antes de ingresar uno nuevo.`);
+    }
 
-    const lote = await Lote.create(req.body);
+    // 3. Crear Lote
+    req.body.cantidadInicial = cantidad;
+    const lote = await Lote.create(req.body, { transaction: t });
+
+    // 4. Actualizar estado visual del Galpón (Opcional, útil para UI rápida)
+    await Galpon.update({ estado: 'ocupado' }, { where: { id: galponId }, transaction: t });
+
+    await t.commit();
     res.status(201).json(lote);
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) {
+    await t.rollback();
+    res.status(400).json({ error: error.message });
+  }
 });
 app.put('/lotes/:id', authenticate, async (req, res) => {
   try {
