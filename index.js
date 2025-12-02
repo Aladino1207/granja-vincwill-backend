@@ -269,7 +269,7 @@ Salud.belongsTo(Inventario, { foreignKey: 'vacunaId', as: 'Vacuna' }); // Alias 
     // 5. ¡NO SUBAS 'force: true' A PRODUCCIÓN O BORRARÁS TODO CADA REINICIO!
 
     //await sequelize.sync({ force: true }); // Usar 1 VEZ para borrar y migrar
-    await sequelize.sync({ force: true }); // Usar esta línea para el día a día
+    await sequelize.sync({ alter: true }); // Usar esta línea para el día a día
 
     console.log('Base de datos sincronizada');
 
@@ -502,7 +502,14 @@ app.post('/galpones/liberar/:id', authenticate, async (req, res) => {
 app.get('/lotes', authenticate, async (req, res) => {
   try {
     const granjaId = checkGranjaId(req);
-    const lotes = await Lote.findAll({ where: { granjaId }, include: { model: Proveedor, attributes: ['nombreCompania'] }, order: [['fechaIngreso', 'DESC']] });
+    const lotes = await Lote.findAll({
+      where: { granjaId },
+      include: [
+        { model: Proveedor, attributes: ['nombreCompania'] },
+        { model: Galpon, attributes: ['nombre'] } 
+      ],
+      order: [['fechaIngreso', 'DESC']]
+    });
     res.json(lotes);
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
