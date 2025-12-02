@@ -83,9 +83,10 @@ const Inventario = sequelize.define('Inventario', {
 const Galpon = sequelize.define('Galpon', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
-  nombre: { type: DataTypes.STRING, allowNull: false }, // Ej: "Galpón 1"
-  capacidad: { type: DataTypes.INTEGER, allowNull: false }, // Ej: 5000 aves
-  estado: { type: DataTypes.STRING, defaultValue: 'libre' } // 'libre', 'ocupado'
+  nombre: { type: DataTypes.STRING, allowNull: false },
+  capacidad: { type: DataTypes.INTEGER, allowNull: false },
+  estado: { type: DataTypes.STRING, defaultValue: 'libre' }, // 'libre', 'ocupado', 'mantenimiento'
+  fechaDisponible: { type: DataTypes.DATE, allowNull: true }
 });
 
 const Lote = sequelize.define('Lote', {
@@ -200,6 +201,8 @@ Agenda.belongsTo(Granja, { foreignKey: 'granjaId' });
 // Producción e Inventario (Relación directa con Granja para consultas rápidas y seguridad)
 Granja.hasMany(Lote, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
 Lote.belongsTo(Granja, { foreignKey: 'granjaId' });
+Granja.hasMany(Galpon, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
+Galpon.belongsTo(Granja, { foreignKey: 'granjaId' });
 Granja.hasMany(Inventario, { foreignKey: 'granjaId', onDelete: 'CASCADE' });
 Inventario.belongsTo(Granja, { foreignKey: 'granjaId' });
 
@@ -266,7 +269,7 @@ Salud.belongsTo(Inventario, { foreignKey: 'vacunaId', as: 'Vacuna' }); // Alias 
     // 5. ¡NO SUBAS 'force: true' A PRODUCCIÓN O BORRARÁS TODO CADA REINICIO!
 
     //await sequelize.sync({ force: true }); // Usar 1 VEZ para borrar y migrar
-    await sequelize.sync({ alter: true }); // Usar esta línea para el día a día
+    await sequelize.sync({ force: true }); // Usar esta línea para el día a día
 
     console.log('Base de datos sincronizada');
 
@@ -450,12 +453,18 @@ const checkGranjaId = (req) => {
 app.get('/galpones', authenticate, async (req, res) => {
   try {
     const granjaId = checkGranjaId(req);
-    // Buscamos galpones y verificamos si tienen lotes activos para determinar estado real
-    const galpones = await Galpon.findAll({
-      where: { granjaId },
-      order: [['nombre', 'ASC']]
-    });
-    res.json(galpones);
+    const galpones = await Galpon.findAll({ where: { granjaId }, order: [['nombre', 'ASC']] });
+    // Verificamos si ya pasó la fecha de desinfección
+    const hoy = new Date();
+    const actualizados = [];
+    for (let g of galpones) {
+      if (g.estado === 'mantenimiento' && g.fechaDisponible && new Date(g.fechaDisponible) <= hoy) {
+        await g.update({ estado: 'libre', fechaDisponible: null });
+        g.estado = 'libre'; // Actualizar objeto para respuesta
+      }
+      actualizados.push(g);
+    }
+    res.json(actualizados);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -474,6 +483,18 @@ app.delete('/galpones/:id', authenticate, async (req, res) => {
     if (!galpon) return res.status(404).json({ error: 'No encontrado' });
     await galpon.destroy();
     res.status(204).send();
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Endpoint para "Liberar Galpón" manualmente
+app.post('/galpones/liberar/:id', authenticate, async (req, res) => {
+  try {
+    const granjaId = checkGranjaId(req);
+    const galpon = await Galpon.findOne({ where: { id: req.params.id, granjaId } });
+    if (!galpon) return res.status(404).json({ error: 'Galpón no encontrado' });
+
+    await galpon.update({ estado: 'libre', fechaDisponible: null });
+    res.json({ message: 'Galpón liberado y listo para uso.' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -499,34 +520,31 @@ app.post('/lotes', authenticate, async (req, res) => {
     const { granjaId, loteId, galponId, cantidad } = req.body;
     if (!granjaId || !loteId || !galponId) throw new Error('Faltan datos');
 
-    // 1. Verificar si el ID de lote ya existe
     const existe = await Lote.findOne({ where: { loteId, granjaId }, transaction: t });
     if (existe) throw new Error('El ID de Lote ya existe');
 
-    // 2. VERIFICAR DISPONIBILIDAD DE GALPÓN (La clave)
-    // Buscamos si hay ALGÚN lote en estado 'disponible' en ese galpón
-    const galponOcupado = await Lote.findOne({
-      where: { galponId, granjaId, estado: 'disponible' },
-      transaction: t
-    });
+    // Validar estado del galpón
+    const galpon = await Galpon.findOne({ where: { id: galponId, granjaId }, transaction: t });
+    if (!galpon) throw new Error('Galpón no existe');
 
-    if (galponOcupado) {
-      throw new Error(`El Galpón seleccionado ya está ocupado por el lote ${galponOcupado.loteId}. Debe cerrar ese lote antes de ingresar uno nuevo.`);
+    if (galpon.estado !== 'libre') {
+      let msg = `El Galpón ${galpon.nombre} está ${galpon.estado}.`;
+      if (galpon.estado === 'mantenimiento' && galpon.fechaDisponible) {
+        msg += ` Disponible el: ${new Date(galpon.fechaDisponible).toLocaleDateString()}`;
+      }
+      throw new Error(msg);
     }
 
-    // 3. Crear Lote
+    // Crear Lote
     req.body.cantidadInicial = cantidad;
     const lote = await Lote.create(req.body, { transaction: t });
 
-    // 4. Actualizar estado visual del Galpón (Opcional, útil para UI rápida)
-    await Galpon.update({ estado: 'ocupado' }, { where: { id: galponId }, transaction: t });
+    // Ocupar Galpón
+    await galpon.update({ estado: 'ocupado' }, { transaction: t });
 
     await t.commit();
     res.status(201).json(lote);
-  } catch (error) {
-    await t.rollback();
-    res.status(400).json({ error: error.message });
-  }
+  } catch (error) { await t.rollback(); res.status(500).json({ error: error.message }); }
 });
 app.put('/lotes/:id', authenticate, async (req, res) => {
   try {
@@ -982,43 +1000,43 @@ app.get('/ventas/:id', authenticate, async (req, res) => {
 app.post('/ventas', authenticate, async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    // CAMBIO: 'cliente' ya no existe, ahora es 'clienteId'
-    const { granjaId, loteId, cantidadVendida, fecha, clienteId } = req.body;
-    if (!granjaId || !loteId || !cantidadVendida || !fecha || !clienteId) {
-      throw new Error('Faltan datos (granjaId, loteId, cantidad, fecha, clienteId)');
-    }
+    const { granjaId, loteId, cantidadVendida, fecha } = req.body;
+    if (!granjaId) throw new Error('granjaId requerido');
 
-    // Check Bioseguridad (Sin cambios)
+    // Check Bioseguridad
     const fechaVenta = new Date(fecha);
-    const ultimoTratamiento = await Salud.findOne({
-      where: { loteId, granjaId, fechaRetiro: { [Op.gt]: fechaVenta } }
-    });
-    if (ultimoTratamiento) {
-      throw new Error(`Venta bloqueada. Lote en retiro hasta: ${new Date(ultimoTratamiento.fechaRetiro).toLocaleDateString()}`);
-    }
+    const ultimoTratamiento = await Salud.findOne({ where: { loteId, granjaId, fechaRetiro: { [Op.gt]: fechaVenta } } });
+    if (ultimoTratamiento) throw new Error(`Venta bloqueada. Retiro hasta: ${new Date(ultimoTratamiento.fechaRetiro).toLocaleDateString()}`);
 
-    // Check Stock (Sin cambios)
     const lote = await Lote.findOne({ where: { id: loteId, granjaId }, transaction: t });
     if (!lote) throw new Error('Lote no encontrado');
-    if (lote.estado !== 'disponible' || lote.cantidad < cantidadVendida) {
-      throw new Error(`Stock insuficiente (${lote.cantidad})`);
-    }
+    if (lote.estado !== 'disponible' || lote.cantidad < cantidadVendida) throw new Error(`Stock insuficiente (${lote.cantidad})`);
 
-    // Crear la Venta (con clienteId)
     const venta = await Venta.create(req.body, { transaction: t });
 
-    // Actualizar Lote (Sin cambios)
-    await lote.update({
-      cantidad: lote.cantidad - cantidadVendida,
-      estado: (lote.cantidad - cantidadVendida) > 0 ? 'disponible' : 'vendido'
-    }, { transaction: t });
+    // Calcular nuevo stock
+    const nuevoStock = lote.cantidad - cantidadVendida;
+    const nuevoEstado = nuevoStock > 0 ? 'disponible' : 'vendido';
+
+    await lote.update({ cantidad: nuevoStock, estado: nuevoEstado }, { transaction: t });
+
+    // --- LÓGICA V 4.2: SI SE VENDE TODO, GALPÓN A MANTENIMIENTO ---
+    if (nuevoStock === 0) {
+      const diasDesinfeccion = 7;
+      const fechaLibre = new Date();
+      fechaLibre.setDate(fechaLibre.getDate() + diasDesinfeccion);
+
+      await Galpon.update({
+        estado: 'mantenimiento',
+        fechaDisponible: fechaLibre
+      }, { where: { id: lote.galponId }, transaction: t });
+
+      console.log(`Galpón ${lote.galponId} puesto en mantenimiento hasta ${fechaLibre}`);
+    }
 
     await t.commit();
     res.status(201).json(venta);
-  } catch (error) {
-    await t.rollback();
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { await t.rollback(); res.status(500).json({ error: error.message }); }
 });
 app.delete('/ventas/:id', authenticate, async (req, res) => {
   // Revertir Venta
