@@ -160,10 +160,10 @@ const Agua = sequelize.define('Agua', {
   fecha: { type: DataTypes.DATE, allowNull: false }
 });
 
-// Tu modelo de Agenda Manual
 const Agenda = sequelize.define('Agenda', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
+  loteId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Lote, key: 'id' } },
   descripcion: { type: DataTypes.STRING, allowNull: false },
   fecha: { type: DataTypes.DATEONLY, allowNull: false },
   completado: { type: DataTypes.BOOLEAN, defaultValue: false }
@@ -175,6 +175,7 @@ const Config = sequelize.define('Config', {
   notificaciones: { type: DataTypes.STRING, allowNull: false, defaultValue: 'Activadas' },
   idioma: { type: DataTypes.STRING, allowNull: false, defaultValue: 'Español' },
   nombreGranja: { type: DataTypes.STRING, allowNull: false, defaultValue: 'Mi Granja' },
+  planVacunacion: { type: DataTypes.STRING, allowNull: true, defaultValue: "7,14,21" }
 });
 
 // --- 2. DEFINIR RELACIONES ---
@@ -233,6 +234,8 @@ Lote.hasMany(Venta, { foreignKey: 'loteId', onDelete: 'CASCADE' });
 Venta.belongsTo(Lote, { foreignKey: 'loteId' });
 Lote.hasMany(Agua, { foreignKey: 'loteId', onDelete: 'CASCADE' });
 Agua.belongsTo(Lote, { foreignKey: 'loteId' });
+Lote.hasMany(Agenda, { foreignKey: 'loteId', onDelete: 'CASCADE' });
+Agenda.belongsTo(Lote, { foreignKey: 'loteId' });
 
 // --- RELACIONES CON PROVEEDORES (Globales) ---
 // Los proveedores existen independientemente, pero se vinculan a Lotes e Inventario.
@@ -269,7 +272,7 @@ Salud.belongsTo(Inventario, { foreignKey: 'vacunaId', as: 'Vacuna' }); // Alias 
     // 5. ¡NO SUBAS 'force: true' A PRODUCCIÓN O BORRARÁS TODO CADA REINICIO!
 
     //await sequelize.sync({ force: true }); // Usar 1 VEZ para borrar y migrar
-    await sequelize.sync({ alter: true }); // Usar esta línea para el día a día
+    await sequelize.sync({ force: true }); // Usar esta línea para el día a día
 
     console.log('Base de datos sincronizada');
 
@@ -506,7 +509,7 @@ app.get('/lotes', authenticate, async (req, res) => {
       where: { granjaId },
       include: [
         { model: Proveedor, attributes: ['nombreCompania'] },
-        { model: Galpon, attributes: ['nombre'] } 
+        { model: Galpon, attributes: ['nombre'] }
       ],
       order: [['fechaIngreso', 'DESC']]
     });
@@ -527,27 +530,42 @@ app.post('/lotes', authenticate, async (req, res) => {
     const { granjaId, loteId, galponId, cantidad } = req.body;
     if (!granjaId || !loteId || !galponId) throw new Error('Faltan datos');
 
+    // 1. Validaciones (ID y Galpón)
     const existe = await Lote.findOne({ where: { loteId, granjaId }, transaction: t });
     if (existe) throw new Error('El ID de Lote ya existe');
 
-    // Validar estado del galpón
     const galpon = await Galpon.findOne({ where: { id: galponId, granjaId }, transaction: t });
-    if (!galpon) throw new Error('Galpón no existe');
+    if (!galpon || galpon.estado !== 'libre') throw new Error('Galpón ocupado o no existe');
 
-    if (galpon.estado !== 'libre') {
-      let msg = `El Galpón ${galpon.nombre} está ${galpon.estado}.`;
-      if (galpon.estado === 'mantenimiento' && galpon.fechaDisponible) {
-        msg += ` Disponible el: ${new Date(galpon.fechaDisponible).toLocaleDateString()}`;
-      }
-      throw new Error(msg);
-    }
-
-    // Crear Lote
+    // 2. Crear Lote
     req.body.cantidadInicial = cantidad;
     const lote = await Lote.create(req.body, { transaction: t });
-
-    // Ocupar Galpón
     await galpon.update({ estado: 'ocupado' }, { transaction: t });
+
+    // 3. AUTOMATIZACIÓN V 4.2: CREAR AGENDA SANITARIA
+    // Leemos la configuración de la granja
+    const config = await Config.findOne({ where: { granjaId }, transaction: t });
+    const planStr = config ? config.planVacunacion : "7,14,21";
+
+    if (planStr) {
+      const dias = planStr.split(',').map(d => parseInt(d.trim())).filter(n => !isNaN(n));
+      const fechaIngreso = new Date(lote.fechaIngreso);
+
+      // Creamos un evento de agenda por cada día del plan
+      for (let dia of dias) {
+        const fechaEvento = new Date(fechaIngreso);
+        fechaEvento.setDate(fechaIngreso.getDate() + dia);
+
+        await Agenda.create({
+          granjaId: granjaId,
+          loteId: lote.id, // Vinculamos al lote
+          fecha: fechaEvento,
+          descripcion: `Plan Sanitario (Día ${dia}): ${loteId}`,
+          completado: false
+        }, { transaction: t });
+      }
+      console.log(`Generados ${dias.length} eventos de agenda para ${loteId}`);
+    }
 
     await t.commit();
     res.status(201).json(lote);
@@ -1146,12 +1164,12 @@ app.get('/config', authenticate, async (req, res) => {
     const granjaId = checkGranjaId(req);
     const [config] = await Config.findOrCreate({
       where: { granjaId },
-      defaults: { granjaId, nombreGranja: 'Mi Granja' }
+      defaults: { granjaId, nombreGranja: 'Mi Granja', planVacunacion: "7,14,21" }
     });
     res.json(config);
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
-app.post('/config', authenticate, async (req, res) => { // Es un "Guardar" (POST o PUT)
+app.post('/config', authenticate, async (req, res) => {
   try {
     const granjaId = checkGranjaId(req);
     const [config] = await Config.findOrCreate({ where: { granjaId } });
