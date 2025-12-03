@@ -134,7 +134,8 @@ const Salud = sequelize.define('Salud', {
 const Costo = sequelize.define('Costo', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   granjaId: { type: DataTypes.INTEGER, allowNull: false, references: { model: Granja, key: 'id' } },
-  loteId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Lote, key: 'id' } }, // Puede ser costo general
+  loteId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Lote, key: 'id' } },
+  galponId: { type: DataTypes.INTEGER, allowNull: true, references: { model: Galpon, key: 'id' } },
   categoria: { type: DataTypes.STRING, allowNull: false },
   descripcion: { type: DataTypes.TEXT, allowNull: false },
   monto: { type: DataTypes.FLOAT, allowNull: false },
@@ -222,6 +223,8 @@ Agua.belongsTo(Granja, { foreignKey: 'granjaId' });
 // Los lotes viven dentro de un galpón.
 Galpon.hasMany(Lote, { foreignKey: 'galponId' });
 Lote.belongsTo(Galpon, { foreignKey: 'galponId' });
+Galpon.hasMany(Costo, { foreignKey: 'galponId', onDelete: 'CASCADE' });
+Costo.belongsTo(Galpon, { foreignKey: 'galponId' });
 // --- RELACIONES DE OPERACIÓN DEL LOTE (Uno a Muchos) ---
 // El Lote es el centro de la producción. Si borras un lote, borras su historial.
 Lote.hasMany(Seguimiento, { foreignKey: 'loteId', onDelete: 'CASCADE' });
@@ -457,13 +460,12 @@ app.get('/galpones', authenticate, async (req, res) => {
   try {
     const granjaId = checkGranjaId(req);
     const galpones = await Galpon.findAll({ where: { granjaId }, order: [['nombre', 'ASC']] });
-    // Verificamos si ya pasó la fecha de desinfección
     const hoy = new Date();
     const actualizados = [];
     for (let g of galpones) {
       if (g.estado === 'mantenimiento' && g.fechaDisponible && new Date(g.fechaDisponible) <= hoy) {
         await g.update({ estado: 'libre', fechaDisponible: null });
-        g.estado = 'libre'; // Actualizar objeto para respuesta
+        g.estado = 'libre';
       }
       actualizados.push(g);
     }
@@ -499,6 +501,58 @@ app.post('/galpones/liberar/:id', authenticate, async (req, res) => {
     await galpon.update({ estado: 'libre', fechaDisponible: null });
     res.json({ message: 'Galpón liberado y listo para uso.' });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- NUEVO: REGISTRAR MANTENIMIENTO (CONSUMO) ---
+app.post('/mantenimiento', authenticate, async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { granjaId, galponId, tipoGasto, inventarioId, cantidad, monto, descripcion, fecha } = req.body;
+    if (!granjaId || !galponId || !tipoGasto || !fecha) throw new Error('Datos incompletos');
+
+    const galpon = await Galpon.findByPk(galponId);
+    if (!galpon) throw new Error('Galpón no encontrado');
+
+    let montoFinal = 0;
+    let descFinal = descripcion;
+
+    // A: Consumo de Inventario
+    if (tipoGasto === 'Inventario') {
+      if (!inventarioId || !cantidad) throw new Error('Seleccione producto y cantidad');
+      const item = await Inventario.findOne({ where: { id: inventarioId, granjaId }, transaction: t });
+      if (!item) throw new Error('Producto no encontrado en inventario');
+      if (item.cantidad < cantidad) throw new Error(`Stock insuficiente de ${item.producto}`);
+
+      await item.decrement('cantidad', { by: cantidad, transaction: t });
+
+      montoFinal = cantidad * item.costo;
+      descFinal = `MANTENIMIENTO: ${item.producto} (${cantidad} ${item.unidadMedida}) - ${descripcion}`;
+    }
+    // B: Gasto Directo
+    else {
+      if (!monto) throw new Error('Ingrese el monto del gasto');
+      montoFinal = parseFloat(monto);
+      descFinal = `MANTENIMIENTO: ${descripcion}`;
+    }
+
+    // Crear el Costo asociado al Galpón
+    const costo = await Costo.create({
+      granjaId,
+      galponId,
+      loteId: null,
+      categoria: 'Mantenimiento',
+      descripcion: descFinal,
+      monto: montoFinal,
+      fecha
+    }, { transaction: t });
+
+    await t.commit();
+    res.status(201).json(costo);
+
+  } catch (error) {
+    await t.rollback();
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // --- Lotes ---
