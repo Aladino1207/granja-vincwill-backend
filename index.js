@@ -782,6 +782,50 @@ app.delete('/inventario/:id', authenticate, async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+// --- REGISTRAR USO/CONSUMO MANUAL ---
+app.post('/inventario/consumo', authenticate, async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { granjaId, inventarioId, cantidad, motivo, loteId } = req.body;
+    if (!granjaId || !inventarioId || !cantidad) throw new Error('Faltan datos');
+
+    // 1. Buscar el ítem
+    const item = await Inventario.findOne({
+      where: { id: inventarioId, granjaId },
+      transaction: t
+    });
+    if (!item) throw new Error('Insumo no encontrado');
+
+    // 2. Validar Stock
+    if (item.cantidad < cantidad) {
+      throw new Error(`Stock insuficiente. Disponible: ${item.cantidad} ${item.unidadMedida}`);
+    }
+
+    // 3. Restar Stock
+    await item.decrement('cantidad', { by: cantidad, transaction: t });
+
+    // 4. Generar Costo Financiero
+    const costoTotal = cantidad * item.costo;
+    const descLote = loteId ? ` (Lote Asignado)` : ` (General/Mantenimiento)`;
+
+    await Costo.create({
+      granjaId,
+      loteId: loteId || null, // Si es null, es gasto general/mantenimiento
+      categoria: item.categoria, // Mantiene la categoría (ej: Cama, Medicina)
+      descripcion: `CONSUMO: ${item.producto} - ${motivo}${descLote}`,
+      monto: costoTotal,
+      fecha: new Date()
+    }, { transaction: t });
+
+    await t.commit();
+    res.json({ message: 'Consumo registrado con éxito', nuevoStock: item.cantidad - cantidad });
+
+  } catch (error) {
+    await t.rollback();
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // --- Seguimiento (con Transacción de Alimento) ---
 app.get('/seguimiento', authenticate, async (req, res) => {
   try {
