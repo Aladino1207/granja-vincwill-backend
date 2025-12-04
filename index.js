@@ -403,6 +403,29 @@ app.get('/users', authenticate, async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Error' }); }
 });
 
+app.put('/granjas/:id', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const granja = await Granja.findByPk(req.params.id);
+    if (!granja) return res.status(404).json({ error: 'Granja no encontrada' });
+
+    await granja.update(req.body);
+    res.json(granja);
+  } catch (error) { res.status(500).json({ error: 'Error al actualizar granja' }); }
+});
+
+app.delete('/granjas/:id', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const granja = await Granja.findByPk(req.params.id);
+    if (!granja) return res.status(404).json({ error: 'Granja no encontrada' });
+
+    // Borrar una granja es destructivo (cascade), cuidado
+    await granja.destroy();
+    res.status(204).send();
+  } catch (error) { res.status(500).json({ error: 'Error al eliminar granja' }); }
+});
+
 // 2. Actualización Masiva de Granjas (El Checkbox)
 app.post('/users/:id/asignar-granjas', authenticate, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
