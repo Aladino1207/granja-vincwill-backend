@@ -275,7 +275,7 @@ Salud.belongsTo(Inventario, { foreignKey: 'vacunaId', as: 'Vacuna' }); // Alias 
     // 5. ¡NO SUBAS 'force: true' A PRODUCCIÓN O BORRARÁS TODO CADA REINICIO!
 
     //await sequelize.sync({ force: true }); // Usar 1 VEZ para borrar y migrar
-    await sequelize.sync({ force: true }); // Usar esta línea para el día a día
+    await sequelize.sync({ alter: true }); // Usar esta línea para el día a día
 
     console.log('Base de datos sincronizada');
 
@@ -387,13 +387,37 @@ app.get('/users', authenticate, async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Error' }); }
 });
 
-app.get('/users/:id', authenticate, async (req, res) => {
+app.get('/users', authenticate, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
   try {
-    const user = await User.findByPk(req.params.id, { attributes: { exclude: ['password'] } });
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json(user);
+    const users = await User.findAll({
+      attributes: { exclude: ['password'] },
+      // Incluimos las granjas para saber cuáles tiene asignadas
+      include: {
+        model: Granja,
+        attributes: ['id', 'nombre'],
+        through: { attributes: [] }
+      }
+    });
+    res.json(users);
   } catch (error) { res.status(500).json({ error: 'Error' }); }
+});
+
+// 2. Actualización Masiva de Granjas (El Checkbox)
+app.post('/users/:id/asignar-granjas', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { id } = req.params;
+    const { granjaIds } = req.body; // Esperamos un array [1, 3, 5]
+
+    const user = await User.findByPk(id);
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    // Método mágico de Sequelize: Borra las anteriores y pone las nuevas
+    await user.setGranjas(granjaIds);
+
+    res.json({ message: 'Asignación actualizada correctamente' });
+  } catch (error) { res.status(500).json({ error: 'Error al asignar: ' + error.message }); }
 });
 
 app.post('/users', authenticate, async (req, res) => {
