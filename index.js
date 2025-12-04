@@ -392,7 +392,7 @@ app.get('/users', authenticate, async (req, res) => {
   try {
     const users = await User.findAll({
       attributes: { exclude: ['password'] },
-      // Incluimos las granjas para saber cuáles tiene asignadas
+      // Iraman dagiti granjas tapno makita no ania ti adda kadakuada
       include: {
         model: Granja,
         attributes: ['id', 'nombre'],
@@ -401,6 +401,22 @@ app.get('/users', authenticate, async (req, res) => {
     });
     res.json(users);
   } catch (error) { res.status(500).json({ error: 'Error' }); }
+});
+
+app.post('/users/:id/asignar-granjas', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { id } = req.params;
+    const { granjaIds } = req.body; // Manamnama a listaan dagiti ID [1, 2]
+
+    const user = await User.findByPk(id);
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    // Ti 'setGranjas' ket automatiko a mangikkat kadagiti daan ken mangikabil kadagiti baro
+    await user.setGranjas(granjaIds);
+
+    res.json({ message: 'Asignación actualizada correctamente' });
+  } catch (error) { res.status(500).json({ error: 'Error al asignar: ' + error.message }); }
 });
 
 app.put('/granjas/:id', authenticate, async (req, res) => {
