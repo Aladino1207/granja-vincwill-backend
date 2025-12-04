@@ -472,19 +472,58 @@ app.post('/users', authenticate, async (req, res) => {
 app.put('/users/:id', authenticate, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
   try {
-    const user = await User.findByPk(req.params.id);
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+    const { id } = req.params;
+    const { name, email, password, role } = req.body;
 
-    const { name, email, role, password } = req.body;
-    const updateData = { name, email, role };
-
-    if (password) { // Solo actualiza contraseña si se envía una
-      updateData.password = bcryptjs.hashSync(password, 10);
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    await user.update(updateData);
+    // Ña-actualiza umi dato
+    user.name = name;
+    user.email = email;
+    user.role = role;
+
+    // SÓLO si oñembohasa contraseña pyahu, ña-encripta
+    if (password && password.trim() !== '') {
+      user.password = await bcryptjs.hash(password, 10);
+    }
+
+    await user.save();
+    res.json({ message: 'Usuario actualizado', user });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al actualizar usuario' });
+  }
+});
+
+app.get('/users/:id', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { id } = req.params;
+    const user = await User.findByPk(id, { attributes: { exclude: ['password'] } });
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
     res.json(user);
-  } catch (error) { res.status(500).json({ error: 'Error' }); }
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener usuario' });
+  }
+});
+
+app.delete('/users/:id', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+  try {
+    const { id } = req.params;
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    await user.destroy();
+    res.json({ message: 'Usuario eliminado' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al eliminar usuario' });
+  }
 });
 
 app.post('/granjas', authenticate, async (req, res) => {
