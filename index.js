@@ -392,15 +392,19 @@ app.get('/users', authenticate, async (req, res) => {
   try {
     const users = await User.findAll({
       attributes: { exclude: ['password'] },
-      // Iraman dagiti granjas tapno makita no ania ti adda kadakuada
+      // CORRECCIÓN: Incluir explícitamente las Granjas asociadas
       include: {
         model: Granja,
         attributes: ['id', 'nombre'],
-        through: { attributes: [] }
-      }
+        through: { attributes: [] } // Ocultar datos de la tabla intermedia
+      },
+      order: [['name', 'ASC']]
     });
     res.json(users);
-  } catch (error) { res.status(500).json({ error: 'Error' }); }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al cargar usuarios' });
+  }
 });
 
 app.post('/users/:id/asignar-granjas', authenticate, async (req, res) => {
