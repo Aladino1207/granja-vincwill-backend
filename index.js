@@ -176,7 +176,8 @@ const Config = sequelize.define('Config', {
   notificaciones: { type: DataTypes.STRING, allowNull: false, defaultValue: 'Activadas' },
   idioma: { type: DataTypes.STRING, allowNull: false, defaultValue: 'Español' },
   nombreGranja: { type: DataTypes.STRING, allowNull: false, defaultValue: 'Mi Granja' },
-  planVacunacion: { type: DataTypes.STRING, allowNull: true, defaultValue: "7,14,21" }
+  planVacunacion: { type: DataTypes.STRING, allowNull: true, defaultValue: "7,14,21" },
+  logoUrl: { type: DataTypes.TEXT, allowNull: true }
 });
 
 // --- 2. DEFINIR RELACIONES ---
