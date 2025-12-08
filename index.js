@@ -580,12 +580,23 @@ app.get('/galpones', authenticate, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/galpones', authenticate, async (req, res) => {
+app.post('/galpones/liberar/:id', authenticate, async (req, res) => {
   try {
-    checkGranjaId(req);
-    const galpon = await Galpon.create(req.body);
-    res.status(201).json(galpon);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    // 1. Obtenemos granjaId (el helper busca en body o query)
+    const granjaId = checkGranjaId(req);
+
+    // 2. Buscamos el galpón asegurando que pertenezca a esa granja
+    const galpon = await Galpon.findOne({ where: { id: req.params.id, granjaId } });
+
+    if (!galpon) return res.status(404).json({ error: 'Galpón no encontrado o no pertenece a esta granja' });
+
+    // 3. Actualizamos
+    await galpon.update({ estado: 'libre', fechaDisponible: null });
+    res.json({ message: 'Galpón liberado y listo para uso.' });
+  } catch (e) {
+    console.error(e); // Para ver el error real en los logs de Render
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.delete('/galpones/:id', authenticate, async (req, res) => {
