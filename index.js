@@ -792,13 +792,40 @@ app.put('/lotes/:id', authenticate, async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 app.delete('/lotes/:id', authenticate, async (req, res) => {
+  const t = await sequelize.transaction(); // Iniciamos una transacción de seguridad
   try {
-    const granjaId = checkGranjaId(req); // granjaId debe ir en query: ?granjaId=1
-    const lote = await Lote.findOne({ where: { id: req.params.id, granjaId } });
-    if (!lote) return res.status(404).json({ error: 'Lote no encontrado' });
-    await lote.destroy(); // Esto borra en CASCADA (Salud, Costos, etc.)
+    const granjaId = checkGranjaId(req);
+
+    // 1. Buscar el lote (necesitamos saber su galponId antes de borrarlo)
+    const lote = await Lote.findOne({ where: { id: req.params.id, granjaId }, transaction: t });
+
+    if (!lote) {
+      await t.rollback();
+      return res.status(404).json({ error: 'Lote no encontrado' });
+    }
+
+    // 2. Buscar y Liberar el Galpón asociado
+    if (lote.galponId) {
+      const galpon = await Galpon.findOne({ where: { id: lote.galponId, granjaId }, transaction: t });
+
+      // Solo lo liberamos si existe.
+      // Nota: Si el galpón ya estaba en 'mantenimiento', también lo forzamos a libre
+      // porque si borras el lote, asumes que el ciclo se canceló o terminó.
+      if (galpon) {
+        await galpon.update({ estado: 'libre', fechaDisponible: null }, { transaction: t });
+      }
+    }
+
+    // 3. Ahora sí, destruir el lote
+    await lote.destroy({ transaction: t });
+
+    await t.commit(); // Confirmar cambios
     res.status(204).send();
-  } catch (error) { res.status(500).json({ error: 'Error al eliminar lote' }); }
+
+  } catch (error) {
+    await t.rollback(); // Deshacer si algo falla
+    res.status(500).json({ error: 'Error al eliminar lote: ' + error.message });
+  }
 });
 
 // ---  NUEVOS ENDPOINTS CLIENTES (Blindados) ---
