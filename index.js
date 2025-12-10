@@ -584,6 +584,28 @@ app.get('/galpones', authenticate, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/galpones', authenticate, async (req, res) => {
+  try {
+    // 1. Validar datos
+    const { granjaId, nombre, capacidad } = req.body;
+    if (!granjaId || !nombre || !capacidad) {
+      return res.status(400).json({ error: 'Faltan datos: nombre, capacidad o granjaId' });
+    }
+
+    // 2. Crear el galpón
+    const galpon = await Galpon.create({
+      granjaId,
+      nombre,
+      capacidad,
+      estado: 'libre' // Por defecto nace libre
+    });
+
+    res.status(201).json(galpon);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/galpones/liberar/:id', authenticate, async (req, res) => {
   try {
     // 1. Obtenemos granjaId (el helper busca en body o query)
