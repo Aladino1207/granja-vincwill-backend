@@ -1550,7 +1550,7 @@ app.post('/reporte', authenticate, async (req, res) => {
         }));
         break;
 
-      case 'costos':
+      case 'costos':{
         // 1. Obtener los datos crudos ordenados por fecha
         const costosSimples = await Costo.findAll({
           where: whereClause,
@@ -1609,6 +1609,7 @@ app.post('/reporte', authenticate, async (req, res) => {
           data.push({ Lote: 'TOTAL', Categoria: '', Descripcion: 'Sin registros', Monto: '0.00', Fecha: '' });
         }
         break;
+      }
 
       case 'ventas':
         const ventasSimples = await Venta.findAll({ where: whereClause, include: [{ model: Lote, attributes: ['loteId'] }, { model: Cliente, attributes: ['nombre'] }] });
