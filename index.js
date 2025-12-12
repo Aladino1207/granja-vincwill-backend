@@ -1551,9 +1551,63 @@ app.post('/reporte', authenticate, async (req, res) => {
         break;
 
       case 'costos':
-        const costosSimples = await Costo.findAll({ where: whereClause, include: [{ model: Lote, attributes: ['loteId'] }] });
-        data = costosSimples.map(c => ({ Lote: c.Lote ? c.Lote.loteId : 'General', Categoria: c.categoria, Descripcion: c.descripcion, Monto: c.monto, Fecha: new Date(c.fecha).toLocaleDateString() }));
-        data.push({ Lote: 'TOTAL', Categoria: '', Descripcion: '', Monto: costosSimples.reduce((s, c) => s + c.monto, 0), Fecha: '' });
+        // 1. Obtener los datos crudos ordenados por fecha
+        const costosSimples = await Costo.findAll({
+          where: whereClause,
+          include: [{ model: Lote, attributes: ['loteId'] }],
+          order: [['fecha', 'ASC']] // Ordenar cronológicamente ayuda a leer
+        });
+
+        // 2. Mapear las filas normales (Detalle)
+        data = costosSimples.map(c => ({
+          Lote: c.Lote ? c.Lote.loteId : 'General',
+          Categoria: c.categoria,
+          Descripcion: c.descripcion,
+          Monto: parseFloat(c.monto).toFixed(2), // Asegurar formato decimal
+          Fecha: new Date(c.fecha).toLocaleDateString()
+        }));
+
+        // 3. INTELIGENCIA: Calcular Subtotales por Categoría
+        const resumenCategorias = costosSimples.reduce((acc, curr) => {
+          const cat = curr.categoria || 'Sin Categoría';
+          acc[cat] = (acc[cat] || 0) + curr.monto;
+          return acc;
+        }, {});
+
+        // 4. Calcular el Gran Total
+        const granTotal = costosSimples.reduce((s, c) => s + c.monto, 0);
+
+        // 5. Inyectar filas de "Adorno" y Resumen al final de la tabla
+        if (data.length > 0) {
+          // Espaciador visual
+          data.push({ Lote: '', Categoria: '', Descripcion: '', Monto: '', Fecha: '' });
+          data.push({ Lote: '', Categoria: '--- RESUMEN ---', Descripcion: '----------------', Monto: '', Fecha: '' });
+
+          // Insertar una fila por cada categoría encontrada
+          for (const [cat, subtotal] of Object.entries(resumenCategorias)) {
+            data.push({
+              Lote: '',
+              Categoria: cat.toUpperCase(),
+              Descripcion: 'Subtotal Categoría',
+              Monto: subtotal.toFixed(2),
+              Fecha: ''
+            });
+          }
+
+          // Espaciador final
+          data.push({ Lote: '', Categoria: '', Descripcion: '', Monto: '', Fecha: '' });
+
+          // GRAN TOTAL (La fila final definitiva)
+          data.push({
+            Lote: 'TOTAL GASTADO',
+            Categoria: '',
+            Descripcion: '',
+            Monto: granTotal.toFixed(2),
+            Fecha: ''
+          });
+        } else {
+          data.push({ Lote: 'TOTAL', Categoria: '', Descripcion: 'Sin registros', Monto: '0.00', Fecha: '' });
+        }
         break;
 
       case 'ventas':
