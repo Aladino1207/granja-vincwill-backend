@@ -1550,7 +1550,7 @@ app.post('/reporte', authenticate, async (req, res) => {
         }));
         break;
 
-      case 'costos':{
+      case 'costos': {
         // 1. Obtener los datos crudos ordenados por fecha
         const costosSimples = await Costo.findAll({
           where: whereClause,
@@ -1622,6 +1622,137 @@ app.post('/reporte', authenticate, async (req, res) => {
     res.json(data);
   } catch (error) {
     res.status(500).json({ error: 'Error al generar reporte: ' + error.message });
+  }
+});
+
+// 8. SISTEMA DE BACKUP Y RESTAURACIÓN
+async function resetSequence(modelName) {
+  const tableName = modelName.tableName || modelName.name + 's'; // Sequelize pluraliza por defecto
+  try {
+    // Consulta mágica para PostgreSQL
+    await sequelize.query(`
+      SELECT setval(pg_get_serial_sequence('"${tableName}"', 'id'), COALESCE(MAX(id), 1) ) FROM "${tableName}";
+    `);
+  } catch (error) {
+    console.log(`Nota: No se pudo resetear secuencia para ${tableName} (puede que no tenga ID serial)`);
+  }
+}
+
+// --- EXPORTAR DATOS (GET) ---
+app.get('/backup/export', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo Admin' });
+
+  try {
+    const backupData = {
+      timestamp: new Date(),
+      version: '3.1',
+      data: {
+        users: await User.findAll(),
+        granjas: await Granja.findAll(),
+        userGranjas: await UserGranja.findAll(),
+        configs: await Config.findAll(),
+        proveedores: await Proveedor.findAll(),
+        clientes: await Cliente.findAll(),
+        galpones: await Galpon.findAll(),
+        inventarios: await Inventario.findAll(),
+        lotes: await Lote.findAll(),
+        // Tablas dependientes de Lotes e Inventario
+        seguimientos: await Seguimiento.findAll(),
+        salud: await Salud.findAll(),
+        costos: await Costo.findAll(),
+        ventas: await Venta.findAll(),
+        agua: await Agua.findAll(),
+        agenda: await Agenda.findAll()
+      }
+    };
+
+    res.setHeader('Content-Disposition', 'attachment; filename=vincwill_backup.json');
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify(backupData, null, 2));
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al generar backup' });
+  }
+});
+
+// --- IMPORTAR DATOS (POST) ---
+app.post('/backup/import', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo Admin' });
+
+  const t = await sequelize.transaction();
+  try {
+    const { data } = req.body;
+    if (!data) throw new Error('Archivo de backup inválido o vacío');
+
+    console.log("Iniciando restauración...");
+
+    // 1. LIMPIEZA TOTAL (La Opción Nuclear)
+    // Borramos datos en orden inverso para respetar Foreign Keys
+    await Agenda.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+    await Agua.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+    await Venta.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+    await Costo.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+    await Salud.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+    await Seguimiento.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+
+    await Lote.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+    await Inventario.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+    await Galpon.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+
+    await Cliente.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+    await Proveedor.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+    await Config.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+    await UserGranja.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+    await Granja.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+    await User.destroy({ where: {}, truncate: true, cascade: true, transaction: t });
+
+    // 2. INSERCIÓN ORDENADA (El orden de los factores SÍ altera el producto)
+    // Usamos bulkCreate para insertar los datos tal cual vienen (con sus IDs originales)
+
+    if (data.users?.length) await User.bulkCreate(data.users, { transaction: t });
+    if (data.granjas?.length) await Granja.bulkCreate(data.granjas, { transaction: t });
+    if (data.userGranjas?.length) await UserGranja.bulkCreate(data.userGranjas, { transaction: t });
+    if (data.configs?.length) await Config.bulkCreate(data.configs, { transaction: t });
+    if (data.proveedores?.length) await Proveedor.bulkCreate(data.proveedores, { transaction: t });
+    if (data.clientes?.length) await Cliente.bulkCreate(data.clientes, { transaction: t });
+    if (data.galpones?.length) await Galpon.bulkCreate(data.galpones, { transaction: t });
+    if (data.inventarios?.length) await Inventario.bulkCreate(data.inventarios, { transaction: t });
+    if (data.lotes?.length) await Lote.bulkCreate(data.lotes, { transaction: t });
+
+    // Tablas finales
+    if (data.seguimientos?.length) await Seguimiento.bulkCreate(data.seguimientos, { transaction: t });
+    if (data.salud?.length) await Salud.bulkCreate(data.salud, { transaction: t });
+    if (data.costos?.length) await Costo.bulkCreate(data.costos, { transaction: t });
+    if (data.ventas?.length) await Venta.bulkCreate(data.ventas, { transaction: t });
+    if (data.agua?.length) await Agua.bulkCreate(data.agua, { transaction: t });
+    if (data.agenda?.length) await Agenda.bulkCreate(data.agenda, { transaction: t });
+
+    await t.commit();
+
+    // 3. RESETEAR SECUENCIAS (Fuera de transacción)
+    // Esto evita el error "duplicate key value violates unique constraint" al crear nuevos registros
+    await resetSequence(User);
+    await resetSequence(Granja);
+    await resetSequence(Proveedor);
+    await resetSequence(Cliente);
+    await resetSequence(Galpon);
+    await resetSequence(Inventario);
+    await resetSequence(Lote);
+    await resetSequence(Seguimiento);
+    await resetSequence(Salud);
+    await resetSequence(Costo);
+    await resetSequence(Venta);
+    await resetSequence(Agua);
+    await resetSequence(Agenda);
+
+    console.log("Restauración completada con éxito.");
+    res.json({ message: 'Base de datos restaurada correctamente. Por favor, vuelve a iniciar sesión.' });
+
+  } catch (error) {
+    await t.rollback();
+    console.error("Error crítico en restauración:", error);
+    res.status(500).json({ error: 'Falló la restauración: ' + error.message });
   }
 });
 
