@@ -1625,6 +1625,69 @@ app.post('/reporte', authenticate, async (req, res) => {
   }
 });
 
+// --- ENDPOINT DE COMPARATIVA ---
+app.get('/comparativa', authenticate, async (req, res) => {
+  try {
+    const { loteA, loteB, granjaId } = req.query;
+    if (!loteA || !loteB || !granjaId) return res.status(400).json({ error: 'Faltan datos' });
+
+    // Función auxiliar para calcular métricas de un lote
+    const calcularMetricas = async (id) => {
+      const lote = await Lote.findByPk(id);
+      if (!lote) return null;
+
+      // 1. Ingresos (Ventas)
+      const ventas = await Venta.findAll({ where: { loteId: id, granjaId } });
+      const totalVentas = ventas.reduce((sum, v) => sum + (v.peso * v.precio), 0);
+      const totalPesoVendido = ventas.reduce((sum, v) => sum + v.peso, 0);
+      const avesVendidas = ventas.reduce((sum, v) => sum + v.cantidadVendida, 0);
+
+      // 2. Egresos (Costos + Insumos registrados como costo)
+      const costos = await Costo.findAll({ where: { loteId: id, granjaId } });
+      const totalCostos = costos.reduce((sum, c) => sum + c.monto, 0);
+
+      // 3. Producción (Mortalidad)
+      const seguimientos = await Seguimiento.findAll({ where: { loteId: id, granjaId } });
+      // Nota: Asumimos que la mortalidad se registra en algún lado, si no, usamos la diferencia
+      // Para este ejemplo simple, usaremos datos calculados:
+      const avesIniciadas = lote.cantidadMachos + lote.cantidadHembras;
+      // Mortalidad simple: Iniciadas - Vendidas (Ajustar según tu lógica exacta de mortalidad si tienes tabla aparte)
+      const mortalidad = avesIniciadas - avesVendidas;
+      const porcentajeMortalidad = ((mortalidad / avesIniciadas) * 100).toFixed(2);
+
+      // 4. Rentabilidad
+      const utilidad = totalVentas - totalCostos;
+      const rentabilidad = totalCostos > 0 ? ((utilidad / totalCostos) * 100).toFixed(2) : 0;
+
+      // 5. Conversión (Costo por Ave)
+      const costoPromedioAve = avesVendidas > 0 ? (totalCostos / avesVendidas).toFixed(2) : 0;
+
+      return {
+        nombre: lote.loteId,
+        iniciadas: avesIniciadas,
+        vendidas: avesVendidas,
+        mortalidad: `${mortalidad} (${porcentajeMortalidad}%)`,
+        pesoTotal: totalPesoVendido.toFixed(2),
+        ingresos: totalVentas.toFixed(2),
+        egresos: totalCostos.toFixed(2),
+        utilidad: utilidad.toFixed(2),
+        rentabilidad: `${rentabilidad}%`,
+        costoPorAve: costoPromedioAve
+      };
+    };
+
+    const datosA = await calcularMetricas(loteA);
+    const datosB = await calcularMetricas(loteB);
+
+    res.json({ loteA: datosA, loteB: datosB });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 // 8. SISTEMA DE BACKUP Y RESTAURACIÓN
 async function resetSequence(modelName) {
   const tableName = modelName.tableName || modelName.name + 's'; // Sequelize pluraliza por defecto
