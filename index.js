@@ -1108,33 +1108,24 @@ app.post('/inventario/consumo', authenticate, async (req, res) => {
 app.get('/seguimiento', authenticate, async (req, res) => {
   try {
     const granjaId = checkGranjaId(req);
-    const items = await Seguimiento.findAll({ where: { granjaId } });
-    res.json(items);
-  } catch (error) { res.status(500).json({ error: error.message }); }
-});
-app.get('/seguimiento', authenticate, async (req, res) => {
-  try {
-    const granjaId = checkGranjaId(req);
 
-    const data = await Seguimiento.findAll({
+    const items = await Seguimiento.findAll({
       where: { granjaId },
       include: [
         {
           model: Lote,
-          required: false, // Left Join (trae el seguimiento aunque el lote falle)
-          attributes: ['id', 'loteId'] // Traemos explícitamente el ID y el Nombre
+          attributes: ['loteId']
         },
         {
           model: Inventario,
-          required: false,
           attributes: ['producto', 'unidadMedida']
         }
       ],
-      // Usamos 'fecha' que es el nombre real en tu BD (no fechaRegistro)
+      // Usamos 'fecha' que es el nombre real en tu BD
       order: [['fecha', 'DESC']]
     });
 
-    res.json(data);
+    res.json(items);
   } catch (e) {
     console.error("Error GET Seguimiento:", e);
     res.status(500).json({ error: e.message });
