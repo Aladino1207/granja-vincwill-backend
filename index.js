@@ -1121,44 +1121,65 @@ app.get('/seguimiento/:id', authenticate, async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 app.post('/seguimiento', authenticate, async (req, res) => {
-  const t = await sequelize.transaction();
+  const t = await sequelize.transaction(); // Iniciar transacción segura
   try {
-    const { granjaId, loteId, alimentoId, consumo, semana, peso, observaciones, fecha } = req.body;
-    if (!granjaId) throw new Error('granjaId requerido');
+    const {
+      granjaId, loteId, semanaVida, pesoPromedio,
+      consumoAlimento, alimentoId, observaciones, fechaRegistro
+    } = req.body;
 
-    // 1. Crear el registro de seguimiento físico (peso, consumo kg)
-    const seguimiento = await Seguimiento.create({
-      granjaId, loteId, alimentoId, semana, peso, consumo, observaciones, fecha
-    }, { transaction: t });
-
-    // 2. Lógica de Alimento (Si se seleccionó un insumo)
-    if (alimentoId && consumo > 0) {
-      const alimento = await Inventario.findOne({ where: { id: alimentoId, granjaId }, transaction: t });
-
-      if (!alimento) throw new Error('Alimento no encontrado en esta granja');
-      if (alimento.cantidad < consumo) throw new Error(`Stock insuficiente. Quedan ${alimento.cantidad} kg de ${alimento.producto}`);
-
-      // A. Descontar del Inventario Físico
-      await alimento.decrement('cantidad', { by: consumo, transaction: t });
-
-      // B. ¡MAGIA! Crear el Costo Financiero automáticamente
-      const costoDinero = consumo * alimento.costo; // kg * precio_unitario
-
-      await Costo.create({
-        granjaId,
-        loteId, // Asignado a este lote
-        categoria: 'Alimento',
-        descripcion: `CONSUMO AUTOMÁTICO: ${alimento.producto} (${consumo} kg)`,
-        monto: costoDinero,
-        fecha: fecha
-      }, { transaction: t });
+    // 1. Validaciones básicas
+    if (!granjaId || !loteId || !fechaRegistro) {
+      await t.rollback();
+      return res.status(400).json({ error: 'Faltan datos obligatorios' });
     }
 
-    await t.commit();
-    res.status(201).json(seguimiento);
+    // 2. Lógica de Inventario (Si se reportó consumo)
+    if (alimentoId && consumoAlimento > 0) {
+      const item = await Inventario.findOne({
+        where: { id: alimentoId, granjaId },
+        transaction: t
+      });
+
+      if (!item) {
+        await t.rollback();
+        return res.status(404).json({ error: 'El alimento seleccionado no existe en inventario.' });
+      }
+
+      // Validación de Stock en Backend (La verdad absoluta)
+      // Usamos un margen de tolerancia pequeño (0.001) para decimales
+      if (item.cantidad < (consumoAlimento - 0.001)) {
+        await t.rollback();
+        return res.status(400).json({
+          error: `Stock insuficiente en servidor. Tienes ${item.cantidad}, intentas descontar ${consumoAlimento}`
+        });
+      }
+
+      // Descontar
+      item.cantidad -= consumoAlimento;
+      await item.save({ transaction: t });
+
+    }
+
+    // 3. Crear el Registro
+    const nuevoSeguimiento = await Seguimiento.create({
+      granjaId,
+      loteId,
+      semanaVida,
+      pesoPromedio,
+      consumoAlimento,
+      alimentoId: alimentoId || null,
+      observaciones,
+      fechaRegistro
+    }, { transaction: t });
+
+    await t.commit(); // Confirmar cambios
+    res.json(nuevoSeguimiento);
+
   } catch (error) {
-    await t.rollback();
-    res.status(500).json({ error: error.message });
+    await t.rollback(); // Deshacer todo si falla
+    console.error("Error en POST /seguimiento:", error);
+    res.status(500).json({ error: 'Error del servidor: ' + error.message });
   }
 });
 app.put('/seguimiento/:id', authenticate, async (req, res) => {
