@@ -1112,13 +1112,33 @@ app.get('/seguimiento', authenticate, async (req, res) => {
     res.json(items);
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
-app.get('/seguimiento/:id', authenticate, async (req, res) => {
+app.get('/seguimiento', authenticate, async (req, res) => {
   try {
     const granjaId = checkGranjaId(req);
-    const item = await Seguimiento.findOne({ where: { id: req.params.id, granjaId } });
-    if (!item) return res.status(404).json({ error: 'Registro no encontrado' });
-    res.json(item);
-  } catch (error) { res.status(500).json({ error: error.message }); }
+
+    const data = await Seguimiento.findAll({
+      where: { granjaId },
+      include: [
+        {
+          model: Lote,
+          required: false, // Left Join (trae el seguimiento aunque el lote falle)
+          attributes: ['id', 'loteId'] // Traemos explícitamente el ID y el Nombre
+        },
+        {
+          model: Inventario,
+          required: false,
+          attributes: ['producto', 'unidadMedida']
+        }
+      ],
+      // Usamos 'fecha' que es el nombre real en tu BD (no fechaRegistro)
+      order: [['fecha', 'DESC']]
+    });
+
+    res.json(data);
+  } catch (e) {
+    console.error("Error GET Seguimiento:", e);
+    res.status(500).json({ error: e.message });
+  }
 });
 app.post('/seguimiento', authenticate, async (req, res) => {
   const t = await sequelize.transaction();
