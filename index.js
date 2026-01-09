@@ -988,6 +988,59 @@ app.post('/inventario', authenticate, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+app.post('/inventario/:id/reabastecer', authenticate, async (req, res) => {
+  const t = await sequelize.transaction(); // Transacción vital para integridad financiera
+  try {
+    const { id } = req.params;
+    const { cantidadNueva, costoTotalCompra, proveedorId, numeroFactura } = req.body;
+    const granjaId = checkGranjaId(req);
+
+    // 1. Buscar el producto actual
+    const item = await Inventario.findOne({ where: { id, granjaId }, transaction: t });
+    if (!item) {
+      await t.rollback();
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
+
+    // 2. Cálculos Financieros (Promedio Ponderado)
+    // Valor actual del inventario ($)
+    const valorActual = Number(item.cantidad) * Number(item.costo);
+    // Valor nuevo total ($)
+    const nuevoValorTotal = valorActual + Number(costoTotalCompra);
+    // Nueva cantidad total
+    const nuevaCantidadTotal = Number(item.cantidad) + Number(cantidadNueva);
+
+    // Nuevo Costo Unitario Promedio
+    const nuevoCostoUnitario = nuevaCantidadTotal > 0 ? (nuevoValorTotal / nuevaCantidadTotal) : 0;
+
+    // 3. Actualizar Inventario
+    // Actualizamos cantidad, costo unitario y el último proveedor
+    await item.update({
+      cantidad: nuevaCantidadTotal,
+      costo: nuevoCostoUnitario, // Precio promedio ponderado
+      proveedorId: proveedorId || item.proveedorId // Actualizamos proveedor si cambió
+    }, { transaction: t });
+
+    // 4. Crear Registro Automático en COSTOS
+    // Para que aparezca en tus reportes financieros sin escribirlo dos veces
+    await Costo.create({
+      granjaId,
+      loteId: null, // Es un costo de inventario general, no de un lote específico aún
+      categoria: 'Inventario/Compra',
+      descripcion: `Compra de stock: ${item.producto} (+${cantidadNueva} ${item.unidadMedida || ''}). Fac: ${numeroFactura || 'S/N'}`,
+      monto: costoTotalCompra,
+      fecha: new Date() // Fecha de hoy
+    }, { transaction: t });
+
+    await t.commit();
+    res.json({ message: 'Stock actualizado y costo registrado', nuevoStock: nuevaCantidadTotal, nuevoCosto: nuevoCostoUnitario });
+
+  } catch (error) {
+    await t.rollback();
+    console.error(error);
+    res.status(500).json({ error: 'Error al reabastecer: ' + error.message });
+  }
+});
 app.put('/inventario/:id', authenticate, async (req, res) => {
   try {
     const granjaId = checkGranjaId(req);
