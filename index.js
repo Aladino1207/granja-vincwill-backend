@@ -1118,10 +1118,10 @@ app.get('/seguimiento', authenticate, async (req, res) => {
         },
         {
           model: Inventario,
+          // IMPORTANTE: Traemos 'costo' para calcular $$ del alimento consumido
           attributes: ['producto', 'unidadMedida', 'costo']
         }
       ],
-      // Usamos 'fecha' que es el nombre real en tu BD
       order: [['fecha', 'DESC']]
     });
 
