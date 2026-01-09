@@ -1121,21 +1121,22 @@ app.get('/seguimiento/:id', authenticate, async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 app.post('/seguimiento', authenticate, async (req, res) => {
-  const t = await sequelize.transaction(); // Iniciar transacción segura
+  const t = await sequelize.transaction();
   try {
+    // Recibimos los nombres COMPATIBLES que envía el frontend
     const {
-      granjaId, loteId, semanaVida, pesoPromedio,
-      consumoAlimento, alimentoId, observaciones, fechaRegistro
+      granjaId, loteId, semana, peso,
+      consumo, alimentoId, observaciones, fecha
     } = req.body;
 
-    // 1. Validaciones básicas
-    if (!granjaId || !loteId || !fechaRegistro) {
+    if (!granjaId || !loteId || !fecha) {
       await t.rollback();
       return res.status(400).json({ error: 'Faltan datos obligatorios' });
     }
 
-    // 2. Lógica de Inventario (Si se reportó consumo)
-    if (alimentoId && consumoAlimento > 0) {
+    // 1. Lógica de Inventario (Si hay consumo)
+    // El frontend envía "consumo" ya convertido a la unidad base
+    if (alimentoId && consumo > 0) {
       const item = await Inventario.findOne({
         where: { id: alimentoId, granjaId },
         transaction: t
@@ -1143,43 +1144,41 @@ app.post('/seguimiento', authenticate, async (req, res) => {
 
       if (!item) {
         await t.rollback();
-        return res.status(404).json({ error: 'El alimento seleccionado no existe en inventario.' });
+        return res.status(404).json({ error: 'El alimento seleccionado no existe.' });
       }
 
-      // Validación de Stock en Backend (La verdad absoluta)
-      // Usamos un margen de tolerancia pequeño (0.001) para decimales
-      if (item.cantidad < (consumoAlimento - 0.001)) {
+      // Validación con margen de error float
+      if (item.cantidad < (consumo - 0.001)) {
         await t.rollback();
         return res.status(400).json({
-          error: `Stock insuficiente en servidor. Tienes ${item.cantidad}, intentas descontar ${consumoAlimento}`
+          error: `Stock insuficiente en servidor. Tienes ${item.cantidad}, intentas descontar ${consumo}`
         });
       }
 
       // Descontar
-      item.cantidad -= consumoAlimento;
+      item.cantidad -= consumo;
       await item.save({ transaction: t });
-
     }
 
-    // 3. Crear el Registro
+    // 2. Crear el Registro
     const nuevoSeguimiento = await Seguimiento.create({
       granjaId,
       loteId,
-      semanaVida,
-      pesoPromedio,
-      consumoAlimento,
+      semana,      // Coincide con la BD
+      peso,        // Coincide con la BD
+      consumo,     // Coincide con la BD
       alimentoId: alimentoId || null,
       observaciones,
-      fechaRegistro
+      fecha        // Coincide con la BD
     }, { transaction: t });
 
-    await t.commit(); // Confirmar cambios
+    await t.commit();
     res.json(nuevoSeguimiento);
 
   } catch (error) {
-    await t.rollback(); // Deshacer todo si falla
-    console.error("Error en POST /seguimiento:", error);
-    res.status(500).json({ error: 'Error del servidor: ' + error.message });
+    await t.rollback();
+    console.error("Error POST seguimiento:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 app.put('/seguimiento/:id', authenticate, async (req, res) => {
