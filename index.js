@@ -1118,7 +1118,7 @@ app.get('/seguimiento', authenticate, async (req, res) => {
         },
         {
           model: Inventario,
-          attributes: ['producto', 'unidadMedida']
+          attributes: ['producto', 'unidadMedida', 'costo']
         }
       ],
       // Usamos 'fecha' que es el nombre real en tu BD
