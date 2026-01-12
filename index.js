@@ -1134,19 +1134,18 @@ app.get('/seguimiento', authenticate, async (req, res) => {
 app.post('/seguimiento', authenticate, async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    // Recibimos los nombres COMPATIBLES que envía el frontend
     const {
       granjaId, loteId, semana, peso,
       consumo, alimentoId, observaciones, fecha
     } = req.body;
 
+    // Validaciones
     if (!granjaId || !loteId || !fecha) {
       await t.rollback();
       return res.status(400).json({ error: 'Faltan datos obligatorios' });
     }
 
-    // 1. Lógica de Inventario (Si hay consumo)
-    // El frontend envía "consumo" ya convertido a la unidad base
+    // --- LÓGICA DE INVENTARIO Y COSTOS ---
     if (alimentoId && consumo > 0) {
       const item = await Inventario.findOne({
         where: { id: alimentoId, granjaId },
@@ -1158,7 +1157,7 @@ app.post('/seguimiento', authenticate, async (req, res) => {
         return res.status(404).json({ error: 'El alimento seleccionado no existe.' });
       }
 
-      // Validación con margen de error float
+      // 1. Validar Stock
       if (item.cantidad < (consumo - 0.001)) {
         await t.rollback();
         return res.status(400).json({
@@ -1166,21 +1165,34 @@ app.post('/seguimiento', authenticate, async (req, res) => {
         });
       }
 
-      // Descontar
+      // 2. Descontar Stock
       item.cantidad -= consumo;
       await item.save({ transaction: t });
+
+      // 3. ¡NUEVO! Registrar el Costo Automáticamente
+      const costoTotal = consumo * item.costo;
+      await Costo.create({
+        granjaId,
+        loteId, // Vinculado al lote
+        galponId: null,
+        categoria: 'Alimentación', // Categoría clave
+        descripcion: `CONSUMO AUTO: ${item.producto} (Semana ${semana})`,
+        monto: costoTotal,
+        fecha
+      }, { transaction: t });
     }
 
-    // 2. Crear el Registro
+    // --- FIN LÓGICA INVENTARIO ---
+
     const nuevoSeguimiento = await Seguimiento.create({
       granjaId,
       loteId,
-      semana,      // Coincide con la BD
-      peso,        // Coincide con la BD
-      consumo,     // Coincide con la BD
+      semana,
+      peso,
+      consumo: consumo || 0,
       alimentoId: alimentoId || null,
       observaciones,
-      fecha        // Coincide con la BD
+      fecha
     }, { transaction: t });
 
     await t.commit();
