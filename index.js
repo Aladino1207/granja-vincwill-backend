@@ -955,36 +955,57 @@ app.get('/inventario/:id', authenticate, async (req, res) => {
 app.post('/inventario', authenticate, async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    // Recibimos 'costoTotal' en lugar de unitario
-    const { granjaId, proveedorId, producto, categoria, cantidad, costoTotal, fecha, unidadMedida } = req.body;
+    const { granjaId, proveedorId, producto, categoria, cantidad, costoTotal, fecha, unidadMedida, costo } = req.body;
 
-    if (!granjaId) throw new Error('granjaId requerido');
-
-    // CÁLCULO AUTOMÁTICO: Costo Unitario = Total / Cantidad
-    // Si costoTotal es 1500 y cantidad 1320 => 1.1363...
+    // 1. Validación y Conversión Numérica
     const cantidadNum = parseFloat(cantidad);
-    const costoTotalNum = parseFloat(costoTotal);
+    if (isNaN(cantidadNum) || cantidadNum <= 0) throw new Error('La cantidad debe ser mayor a 0');
 
-    if (cantidadNum <= 0) throw new Error('Cantidad debe ser mayor a 0');
+    // 2. Determinar Costo Unitario
+    // Prioridad: Si viene costo unitario directo, úsalo. Si no, calcúlalo del total.
+    let costoUnitario = parseFloat(costo);
 
-    const costoUnitario = costoTotalNum / cantidadNum;
+    if (isNaN(costoUnitario)) {
+      // Si no es un número válido, intentamos calcularlo desde el costoTotal
+      const totalNum = parseFloat(costoTotal);
+      if (!isNaN(totalNum) && cantidadNum > 0) {
+        costoUnitario = totalNum / cantidadNum;
+      } else {
+        costoUnitario = 0; // Fallback de seguridad
+      }
+    }
 
+    // 3. Crear Registro
     const item = await Inventario.create({
       granjaId,
-      proveedorId,
+      proveedorId: proveedorId || null,
       producto,
       categoria,
-      unidadMedida, // <-- Guardar unidadMedida
-      cantidad: cantidadNum,
+      unidadMedida,
+      cantidad: cantidadNum, // Ahora sí usamos la variable definida
       costo: costoUnitario,
       fecha
     }, { transaction: t });
+
+    // 4. Registrar Gasto Inicial Automático (Opcional pero recomendado)
+    if (costoUnitario > 0) {
+      const montoTotal = cantidadNum * costoUnitario;
+      await Costo.create({
+        granjaId,
+        loteId: null,
+        categoria: 'Inventario/Compra',
+        descripcion: `Inventario Inicial: ${producto}`,
+        monto: montoTotal,
+        fecha
+      }, { transaction: t });
+    }
 
     await t.commit();
     res.status(201).json(item);
 
   } catch (error) {
     await t.rollback();
+    console.error("Error crear inventario:", error);
     res.status(500).json({ error: error.message });
   }
 });
