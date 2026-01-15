@@ -955,48 +955,48 @@ app.get('/inventario/:id', authenticate, async (req, res) => {
 app.post('/inventario', authenticate, async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { granjaId, proveedorId, producto, categoria, cantidad, costoTotal, fecha, unidadMedida, costo } = req.body;
+    const {
+      granjaId, proveedorId, producto, categoria,
+      unidadMedida, fecha,
+      // Estos pueden venir o no, pero por defecto asumimos 0 si es solo creación
+      cantidad, costo, costoTotal
+    } = req.body;
 
-    // 1. Validación y Conversión Numérica
-    const cantidadNum = parseFloat(cantidad);
-    if (isNaN(cantidadNum) || cantidadNum <= 0) throw new Error('La cantidad debe ser mayor a 0');
-
-    // 2. Determinar Costo Unitario
-    // Prioridad: Si viene costo unitario directo, úsalo. Si no, calcúlalo del total.
-    let costoUnitario = parseFloat(costo);
-
-    if (isNaN(costoUnitario)) {
-      // Si no es un número válido, intentamos calcularlo desde el costoTotal
-      const totalNum = parseFloat(costoTotal);
-      if (!isNaN(totalNum) && cantidadNum > 0) {
-        costoUnitario = totalNum / cantidadNum;
-      } else {
-        costoUnitario = 0; // Fallback de seguridad
-      }
+    // 1. Validaciones Básicas
+    if (!granjaId || !producto || !categoria) {
+      throw new Error('Faltan datos obligatorios (Nombre, Categoría)');
     }
 
-    // 3. Crear Registro
+    // 2. Preparar valores (Si es creación pura, serán 0)
+    const cantidadNum = parseFloat(cantidad) || 0;
+    const costoUnitario = parseFloat(costo) || 0;
+    const costoTotalNum = parseFloat(costoTotal) || 0;
+
+    // NOTA: Eliminamos la restricción "cantidad > 0" para permitir crear catálogo vacío.
+
+    // 3. Crear en Inventario
     const item = await Inventario.create({
       granjaId,
       proveedorId: proveedorId || null,
       producto,
       categoria,
       unidadMedida,
-      cantidad: cantidadNum, // Ahora sí usamos la variable definida
+      cantidad: cantidadNum,
       costo: costoUnitario,
-      fecha
+      fecha: fecha || new Date() // Si no mandan fecha, usa hoy
     }, { transaction: t });
 
-    // 4. Registrar Gasto Inicial Automático (Opcional pero recomendado)
-    if (costoUnitario > 0) {
-      const montoTotal = cantidadNum * costoUnitario;
+    // 4. Registrar Gasto SOLO SI hubo dinero involucrado
+    // (En el nuevo flujo de "Crear Producto", esto no debería ejecutarse, 
+    // pero lo dejamos por seguridad o compatibilidad futura).
+    if (costoTotalNum > 0) {
       await Costo.create({
         granjaId,
         loteId: null,
         categoria: 'Inventario/Compra',
-        descripcion: `Inventario Inicial: ${producto}`,
-        monto: montoTotal,
-        fecha
+        descripcion: `Inventario Inicial: ${producto} (${cantidadNum} ${unidadMedida})`,
+        monto: costoTotalNum,
+        fecha: fecha || new Date()
       }, { transaction: t });
     }
 
